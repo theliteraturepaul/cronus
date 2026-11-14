@@ -1,0 +1,5 @@
+* text=auto eol=lf
+Dataset/project_dataset.csv -text
+*.pbix binary
+*.joblib binary
+*.png binary
