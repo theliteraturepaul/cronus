@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
+    "scikit-learn>=1.9.1",
     "sqlalchemy>=2.0",
     "streamlit>=1.66",
 ]
@@ -22,6 +23,13 @@ dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.14",
+]
+notebook = [
+    "ipykernel>=7.4.0",
+    "jupyterlab>=4.6.6",
+    "matplotlib>=3.11.2",
+    "nbconvert>=7.17.2",
+    "seaborn>=0.13.2",
 ]
 
 [build-system]
@@ -37,6 +45,10 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+allowed-confusables = ["–", "×", "…"]
+
+[tool.ruff.lint.per-file-ignores]
+"Python/*.ipynb" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["cronus"]

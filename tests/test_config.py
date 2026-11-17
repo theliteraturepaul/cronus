@@ -77,6 +77,35 @@ def test_settings_falls_back_to_database_url_for_migrations() -> None:
     assert settings.migration_url == settings.sqlalchemy_url
 
 
+def test_blank_admin_password_is_unset() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://u:p@host/db",
+        admin_password="",
+    )
+    assert settings.admin_password is None
+
+
+def test_whitespace_admin_password_is_unset() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://u:p@host/db",
+        admin_password="   ",
+    )
+    assert settings.admin_password is None
+
+
+def test_admin_password_is_masked_in_repr() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://u:p@host/db",
+        admin_password="topsecret",
+    )
+    assert settings.admin_password is not None
+    assert settings.admin_password.get_secret_value() == "topsecret"
+    assert "topsecret" not in repr(settings)
+
+
 def test_settings_rejects_invalid_upload_limits() -> None:
     with pytest.raises(ValidationError):
         Settings(

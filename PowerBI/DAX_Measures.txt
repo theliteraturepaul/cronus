@@ -1,0 +1,371 @@
+// ============================================================================
+// Cronus Power BI measures, calculated columns, and fixed evidence tables
+// ============================================================================
+// Paste each block into Power BI Desktop: Modeling > New measure, New column,
+// or New table. The fixed evidence values come from src/cronus/modeling/
+// serving.py and the Phase 3 evidence notebook. Do not recompute them from the
+// current frame.
+//
+// The model has no relationships. ActiveDataset is a single-row table of
+// constants. CurrentRelationships and ScoredRelationships have the same grain,
+// so a relationship adds no value. DateTable is a disconnected calendar.
+// ============================================================================
+
+
+// ============================================================================
+// 1. CALCULATED COLUMNS ON ScoredRelationships
+// ============================================================================
+
+Age Band =
+SWITCH (
+    TRUE (),
+    ScoredRelationships[age] <= 24, "15-24",
+    ScoredRelationships[age] <= 34, "25-34",
+    ScoredRelationships[age] <= 44, "35-44",
+    ScoredRelationships[age] <= 54, "45-54",
+    ScoredRelationships[age] <= 64, "55-64",
+    "65+"
+)
+
+Tenure Band =
+SWITCH (
+    TRUE (),
+    ScoredRelationships[tenure_days] <= 90, "0-90 days",
+    ScoredRelationships[tenure_days] <= 180, "91-180 days",
+    ScoredRelationships[tenure_days] <= 365, "181-365 days",
+    ScoredRelationships[tenure_days] <= 730, "366-730 days",
+    "731+ days"
+)
+
+Registration Year = YEAR ( ScoredRelationships[date_of_registration] )
+
+Calls Quartile =
+VAR Q1 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[calls_made], 0.25 )
+VAR Q2 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[calls_made], 0.50 )
+VAR Q3 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[calls_made], 0.75 )
+RETURN
+    SWITCH (
+        TRUE (),
+        ScoredRelationships[calls_made] <= Q1, "Q1",
+        ScoredRelationships[calls_made] <= Q2, "Q2",
+        ScoredRelationships[calls_made] <= Q3, "Q3",
+        "Q4"
+    )
+
+SMS Quartile =
+VAR Q1 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[sms_sent], 0.25 )
+VAR Q2 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[sms_sent], 0.50 )
+VAR Q3 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[sms_sent], 0.75 )
+RETURN
+    SWITCH (
+        TRUE (),
+        ScoredRelationships[sms_sent] <= Q1, "Q1",
+        ScoredRelationships[sms_sent] <= Q2, "Q2",
+        ScoredRelationships[sms_sent] <= Q3, "Q3",
+        "Q4"
+    )
+
+Data Quartile =
+VAR Q1 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[data_used], 0.25 )
+VAR Q2 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[data_used], 0.50 )
+VAR Q3 = PERCENTILEX.INC ( ALL ( ScoredRelationships ), ScoredRelationships[data_used], 0.75 )
+RETURN
+    SWITCH (
+        TRUE (),
+        ScoredRelationships[data_used] <= Q1, "Q1",
+        ScoredRelationships[data_used] <= Q2, "Q2",
+        ScoredRelationships[data_used] <= Q3, "Q3",
+        "Q4"
+    )
+
+
+// ============================================================================
+// 2. DATASET CONSTANTS (ActiveDataset, one row)
+// ============================================================================
+
+Total Relationships = MAX ( ActiveDataset[relationship_count] )
+
+Unique Customers = MAX ( ActiveDataset[unique_customers] )
+
+Relationship Churn Count = MAX ( ActiveDataset[relationship_churn_count] )
+
+Relationship Churn Rate =
+DIVIDE ( [Relationship Churn Count], [Total Relationships] )
+
+Current Relationship Count = MAX ( ActiveDataset[current_relationship_count] )
+
+Current Churn Count = MAX ( ActiveDataset[current_churn_count] )
+
+Current Churn Rate =
+DIVIDE ( [Current Churn Count], [Current Relationship Count] )
+
+Multi-Provider Customers = MAX ( ActiveDataset[multi_relationship_customers] )
+
+Multi-Provider % =
+DIVIDE ( [Multi-Provider Customers], [Unique Customers] )
+
+Re-Entry Pairs = MAX ( ActiveDataset[reentry_pairs] )
+
+Partner Count = MAX ( ActiveDataset[partner_count] )
+
+Snapshot Date = MAX ( ActiveDataset[as_of_date] )
+
+Registration Window =
+FORMAT ( MAX ( ActiveDataset[min_registration_date] ), "yyyy-mm-dd" )
+    & " to "
+    & FORMAT ( MAX ( ActiveDataset[max_registration_date] ), "yyyy-mm-dd" )
+
+
+// ============================================================================
+// 3. CURRENT CUSTOMER CHURN (ScoredRelationships, latest rows only)
+// ============================================================================
+
+Provider N = COUNTROWS ( ScoredRelationships )
+
+Provider Churned =
+CALCULATE ( COUNTROWS ( ScoredRelationships ), ScoredRelationships[churn] = TRUE () )
+
+Provider Churn Rate = DIVIDE ( [Provider Churned], [Provider N] )
+
+Provider Share of Base =
+DIVIDE ( [Provider N], CALCULATE ( [Provider N], ALL ( ScoredRelationships[telecom_partner] ) ) )
+
+Provider Small Sample = IF ( [Provider N] < 100, "Small sample", "" )
+
+Wilson Lower =
+VAR p = [Provider Churn Rate]
+VAR n = [Provider N]
+VAR z = 1.96
+VAR denominator = 1 + z ^ 2 / n
+VAR centre = ( p + z ^ 2 / ( 2 * n ) ) / denominator
+VAR margin =
+    z * SQRT ( ( p * ( 1 - p ) / n ) + z ^ 2 / ( 4 * n ^ 2 ) ) / denominator
+RETURN
+    MAX ( 0, centre - margin )
+
+Wilson Upper =
+VAR p = [Provider Churn Rate]
+VAR n = [Provider N]
+VAR z = 1.96
+VAR denominator = 1 + z ^ 2 / n
+VAR centre = ( p + z ^ 2 / ( 2 * n ) ) / denominator
+VAR margin =
+    z * SQRT ( ( p * ( 1 - p ) / n ) + z ^ 2 / ( 4 * n ^ 2 ) ) / denominator
+RETURN
+    MIN ( 1, centre + margin )
+
+
+// ============================================================================
+// 4. SCORED QUEUE (ScoredRelationships)
+// ============================================================================
+
+Scored Count = COUNTROWS ( ScoredRelationships )
+
+Flagged Count Default =
+CALCULATE (
+    COUNTROWS ( ScoredRelationships ),
+    ScoredRelationships[predicted_churn_default] = TRUE ()
+)
+
+Flagged Rate Default = DIVIDE ( [Flagged Count Default], [Scored Count] )
+
+High Priority Count Default =
+CALCULATE (
+    COUNTROWS ( ScoredRelationships ),
+    ScoredRelationships[review_priority_default] = "High"
+)
+
+Elevated Count Default =
+CALCULATE (
+    COUNTROWS ( ScoredRelationships ),
+    ScoredRelationships[review_priority_default] = "Elevated"
+)
+
+Mean Score Default = AVERAGE ( ScoredRelationships[churn_probability] )
+
+Flagged Count Recall70 =
+CALCULATE (
+    COUNTROWS ( ScoredRelationships ),
+    ScoredRelationships[predicted_churn_recall70] = TRUE ()
+)
+
+Flagged Rate Recall70 = DIVIDE ( [Flagged Count Recall70], [Scored Count] )
+
+High Priority Count Recall70 =
+CALCULATE (
+    COUNTROWS ( ScoredRelationships ),
+    ScoredRelationships[review_priority_recall70] = "High"
+)
+
+Mean Score Recall70 = AVERAGE ( ScoredRelationships[churn_probability] )
+
+// Expected after a correct refresh: [Flagged Count Default] = 1,180 and
+// [Flagged Count Recall70] = 3,286.
+
+
+// ============================================================================
+// 5. THRESHOLD SELECTOR (disconnected table)
+// ============================================================================
+
+ThresholdSelector =
+DATATABLE (
+    "Policy", STRING,
+    "Threshold", DOUBLE,
+    "Label", STRING,
+    {
+        { "Max-F1", 0.184, "Default review policy - threshold 0.1840" },
+        { "Recall-70", 0.0981, "70% recall floor - threshold 0.0981" }
+    }
+)
+
+Selected Threshold = SELECTEDVALUE ( ThresholdSelector[Threshold], 0.184 )
+
+Selected Policy Label =
+SELECTEDVALUE ( ThresholdSelector[Label], "Default review policy - threshold 0.1840" )
+
+Flagged Count Selected =
+VAR Threshold = [Selected Threshold]
+RETURN
+    CALCULATE (
+        COUNTROWS ( ScoredRelationships ),
+        ScoredRelationships[churn_probability] >= Threshold
+    )
+
+Flagged Rate Selected = DIVIDE ( [Flagged Count Selected], [Scored Count] )
+
+Elevated or High Count Selected =
+VAR Threshold = [Selected Threshold]
+RETURN
+    CALCULATE (
+        COUNTROWS ( ScoredRelationships ),
+        ScoredRelationships[churn_probability] >= Threshold / 2
+    )
+
+
+// ============================================================================
+// 6. FIXED PHASE 3 EVIDENCE TABLES (disconnected, do not recompute)
+// ============================================================================
+
+ModelMetrics =
+DATATABLE (
+    "Metric", STRING,
+    "Value", DOUBLE,
+    "Note", STRING,
+    {
+        { "Holdout PR-AUC", 0.2312, "95% CI 0.1909 to 0.2926" },
+        { "Holdout ROC-AUC", 0.7295, "95% CI 0.6884 to 0.7654" },
+        { "Holdout Brier", 0.0806, "95% CI 0.0778 to 0.0834" },
+        { "Current churn prevalence", 0.0956, "847 of 8,860 current relationships" },
+        { "Max-F1 threshold", 0.184, "Selected on out-of-fold predictions" }
+    }
+)
+
+ConfusionMatrix =
+DATATABLE (
+    "Outcome", STRING,
+    "Count", INTEGER,
+    "Note", STRING,
+    {
+        { "True negative", 1423, "No churn, not flagged" },
+        { "False positive", 180, "No churn, flagged" },
+        { "False negative", 112, "Churn, not flagged" },
+        { "True positive", 57, "Churn, flagged" }
+    }
+)
+
+ThresholdPolicies =
+DATATABLE (
+    "Policy", STRING,
+    "Threshold", DOUBLE,
+    "Precision", DOUBLE,
+    "Recall", DOUBLE,
+    "F1", DOUBLE,
+    "Note", STRING,
+    {
+        {
+            "Max-F1 (default)",
+            0.184,
+            0.2405,
+            0.3373,
+            0.2808,
+            "Default review policy. Fewer flags, higher precision."
+        },
+        {
+            "Recall-70",
+            0.0981,
+            0.172,
+            0.669,
+            0.273,
+            "Higher recall, more false positives. Needs review capacity."
+        }
+    }
+)
+
+PermutationImportance =
+DATATABLE (
+    "Feature", STRING,
+    "PR-AUC drop", DOUBLE,
+    "Std", DOUBLE,
+    {
+        { "telecom_partner", 0.0434, 0.0090 },
+        { "data_used", 0.0320, 0.0168 },
+        { "calls_made", 0.0231, 0.0077 },
+        { "tenure_days", 0.0178, 0.0095 },
+        { "estimated_salary", 0.0119, 0.0072 },
+        { "num_dependents", 0.0118, 0.0082 },
+        { "sms_sent", 0.0020, 0.0057 },
+        { "gender", -0.0002, 0.0007 },
+        { "age", -0.0005, 0.0003 },
+        { "state", -0.0007, 0.0049 }
+    }
+)
+
+SubgroupRecall =
+DATATABLE (
+    "Group", STRING,
+    "Recall", DOUBLE,
+    {
+        { "BSNL", 0.577 },
+        { "Airtel", 0.375 },
+        { "Vodafone", 0.178 },
+        { "Reliance Jio", 0.125 },
+        { "Highest calls quartile", 0.000 }
+    }
+)
+
+CalibrationBins =
+DATATABLE (
+    "Bin", INTEGER,
+    "N", INTEGER,
+    "Mean predicted", DOUBLE,
+    "Observed rate", DOUBLE,
+    "Gap", DOUBLE,
+    {
+        { 1, 178, 0.008, 0.011, 0.003 },
+        { 2, 177, 0.022, 0.028, 0.006 },
+        { 3, 177, 0.034, 0.051, 0.017 },
+        { 4, 177, 0.047, 0.045, -0.002 },
+        { 5, 177, 0.063, 0.073, 0.011 },
+        { 6, 177, 0.081, 0.085, 0.003 },
+        { 7, 177, 0.103, 0.096, -0.007 },
+        { 8, 177, 0.132, 0.096, -0.036 },
+        { 9, 177, 0.177, 0.209, 0.032 },
+        { 10, 178, 0.290, 0.258, -0.032 }
+    }
+)
+
+TemporalCheck =
+DATATABLE (
+    "Metric", STRING,
+    "Value", DOUBLE,
+    {
+        { "Threshold", 0.1410 },
+        { "PR-AUC", 0.2776 },
+        { "ROC-AUC", 0.7450 },
+        { "Brier", 0.0941 },
+        { "Prevalence", 0.1155 },
+        { "Precision", 0.2265 },
+        { "Recall", 0.6212 },
+        { "F1", 0.3320 }
+    }
+)

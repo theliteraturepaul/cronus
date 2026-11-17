@@ -7,6 +7,10 @@
 # Local source dataset (canonical committed copy lives in Dataset/)
 /telecom_churn.csv
 
+# Power BI prediction table (the project rule bans prediction tables)
+PowerBI/scored_latest.csv
+PowerBI/exported_scores.csv
+
 # Python
 .venv/
 __pycache__/

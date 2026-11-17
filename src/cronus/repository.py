@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+import pandas as pd
 from sqlalchemy import and_, distinct, func, select, update
 from sqlalchemy.orm import Session
 
@@ -16,11 +17,102 @@ from cronus.schemas import (
     DatasetNotFound,
 )
 
+CURRENT_READ_COLUMNS: tuple[str, ...] = (
+    "customer_id",
+    "telecom_partner",
+    "gender",
+    "age",
+    "state",
+    "num_dependents",
+    "estimated_salary",
+    "calls_made",
+    "sms_sent",
+    "data_used",
+    "churn",
+    "date_of_registration",
+    "tenure_days",
+    "relationship_count",
+    "is_latest_relationship",
+)
+
+
+def _empty_current_frame() -> pd.DataFrame:
+    frame = pd.DataFrame({column: pd.Series(dtype="object") for column in CURRENT_READ_COLUMNS})
+    frame["churn"] = pd.Series(dtype="bool")
+    frame["is_latest_relationship"] = pd.Series(dtype="bool")
+    return frame
+
 
 def _percentage(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 0.0
     return round(numerator * 100.0 / denominator, 2)
+
+
+def get_current_relationships(
+    session: Session,
+    dataset_id: uuid.UUID,
+) -> pd.DataFrame:
+    """Return the current-relationship frame for one dataset.
+
+    One row is one customer's latest provider relationship.  The query never
+    returns historical rows and never deduplicates.  A duplicate customer on
+    the latest grain is a data integrity error.
+    """
+
+    statement = (
+        select(
+            CustomerRelationship.customer_id,
+            CustomerRelationship.telecom_partner,
+            CustomerRelationship.gender,
+            CustomerRelationship.age,
+            CustomerRelationship.state,
+            CustomerRelationship.num_dependents,
+            CustomerRelationship.estimated_salary,
+            CustomerRelationship.calls_made,
+            CustomerRelationship.sms_sent,
+            CustomerRelationship.data_used,
+            CustomerRelationship.churn,
+            CustomerRelationship.registration_date.label("date_of_registration"),
+            CustomerRelationship.tenure_days,
+            CustomerRelationship.relationship_count,
+            CustomerRelationship.is_latest_relationship,
+        )
+        .where(
+            CustomerRelationship.dataset_id == dataset_id,
+            CustomerRelationship.is_latest_relationship.is_(True),
+        )
+        .order_by(CustomerRelationship.customer_id.asc())
+    )
+
+    rows = session.execute(statement).mappings().all()
+    if not rows:
+        return _empty_current_frame()
+
+    frame = pd.DataFrame([dict(row) for row in rows], columns=list(CURRENT_READ_COLUMNS))
+    for column in ("customer_id", "telecom_partner", "gender", "state"):
+        frame[column] = frame[column].astype(str).str.strip()
+    for column in (
+        "age",
+        "num_dependents",
+        "estimated_salary",
+        "calls_made",
+        "sms_sent",
+        "data_used",
+        "tenure_days",
+        "relationship_count",
+    ):
+        frame[column] = pd.to_numeric(frame[column], errors="raise").astype("int64")
+    frame["churn"] = frame["churn"].astype(bool)
+    frame["is_latest_relationship"] = frame["is_latest_relationship"].astype(bool)
+
+    duplicates = int(frame["customer_id"].duplicated().sum())
+    if duplicates:
+        raise ValueError(
+            f"The latest-relationship frame contains {duplicates} duplicate customer(s)."
+        )
+
+    return frame.reset_index(drop=True)
 
 
 def list_datasets(session: Session) -> list[DatasetInfo]:

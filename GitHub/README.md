@@ -71,7 +71,9 @@ Phase 4 — analytics UI and admin workflow — is implemented:
   closed when no password is configured
 - No model artifact, prediction table, new runtime dependency, or schema change
 
-Phase 5 and later phases are not implemented yet.
+Phase 5 is complete. Phase 6 is in progress: the Power Query scoring, the DAX
+objects, and the build guide are ready, and the PBIX build is pending. Phase 7
+is not started.
 
 ## Architecture
 
@@ -121,8 +123,13 @@ flowchart LR
 │   └── README.md                  # source, SHA-256, shape, semantics
 ├── Python/analysis.ipynb          # executed Phase 2 EDA notebook
 ├── Python/modeling.ipynb          # executed Phase 3 modeling notebook
-├── PowerBI/.gitkeep               # Phase 6 PBIX
-├── GitHub/.gitkeep                # Phase 7 final README copy
+├── PowerBI/
+│   ├── PowerQuery_M_Scoring.txt   # five Power Query queries for scoring
+│   ├── DAX_Measures.txt           # measures, columns, fixed evidence tables
+│   ├── PBIX_Build_Guide.md        # build steps for the five report pages
+│   ├── powerbi_model_export.json  # intercept, 43 coefficients, scaler
+│   └── verify_scores.py           # PBIX vs Streamlit parity check
+├── GitHub/README.md               # copy of the root README (Phase 7)
 ├── app/
 │   ├── main.py                    # navigation shell and page registration
 │   ├── shared.py                  # cached reads, sidebar, and UI helpers
@@ -164,6 +171,7 @@ flowchart LR
 │   ├── test_serving.py
 │   ├── test_validation.py
 │   ├── test_modeling.py
+│   ├── test_powerbi_export.py
 │   └── test_ingest_db.py
 ├── .github/workflows/ci.yml
 ├── .streamlit/config.toml
@@ -744,7 +752,7 @@ counts, 10 figures, no error output, and no stderr output.
 | 3 | Current-relationship churn model and evaluation | Completed — `src/cronus/modeling/` and `Python/modeling.ipynb` |
 | 4 | Full analytics UI and admin-gated upload workflow | Completed — `app/` multipage Streamlit application |
 | 5 | Deployment and public Streamlit URL | Completed — https://churn-lab.streamlit.app/ |
-| 6 | Power BI dashboard in Import mode | `PowerBI/project_dashboard.pbix` |
+| 6 | Power BI dashboard in Import mode | In progress — scoring queries, DAX, and build guide are ready; `project_dashboard.pbix` is pending a Windows build |
 | 7 | Final documentation and submission README | `01_Project_Documentation.pdf`, `GitHub/README.md` |
 
 ## Instructor submission mapping
@@ -764,6 +772,68 @@ this submission mapping.
 If the instructor requires the numbered folder names, the final submission can
 map the unnumbered project folders to those item names without duplicating the
 source tree.
+
+## Power BI Dashboard (Phase 6)
+
+The dashboard is built in **Import mode** against the Neon Postgres database.
+Scoring is computed in **Power Query (M)**. The queries replicate the Phase 3
+preprocessing (OneHotEncoder with `min_frequency=50`, StandardScaler) and apply
+the fixed logistic regression coefficients. The PBIX does not read a scored CSV
+and does not call Python at view time.
+
+### Files
+| File | Purpose |
+|------|---------|
+| `PowerBI/PowerQuery_M_Scoring.txt` | Five queries: Config, ActiveDataset, CurrentRelationships, DateTable, ScoredRelationships |
+| `PowerBI/DAX_Measures.txt` | Calculated columns, measures, threshold selector, fixed evidence tables |
+| `PowerBI/PBIX_Build_Guide.md` | Step-by-step build guide for the five report pages |
+| `PowerBI/powerbi_model_export.json` | Model parameters (intercept, 43 coefficients, scaler, categories) |
+| `PowerBI/verify_scores.py` | Build-time parity check against the Streamlit scores |
+| `PowerBI/project_dashboard.pbix` | Output. The build is pending on Windows Power BI Desktop. |
+
+### Data Model
+- `Config` — one record of fixed parameters. Load is disabled.
+- `ActiveDataset` — single active snapshot with the dual-grain summary.
+- `CurrentRelationships` — latest relationships only. Intermediate query, load
+  is disabled.
+- `ScoredRelationships` — computed in M: adds `churn_probability`, both fixed
+  flags, both priorities, both thresholds, and `score_rank`.
+- `DateTable` — disconnected calendar.
+
+The model has no relationships. `ActiveDataset` is a one-row constant table.
+`ScoredRelationships` is the only fact table. The evidence tables on the Model
+performance page are fixed and disconnected.
+
+### Report Pages
+1. **Overview** — dual-grain churn KPIs, snapshot context, dual-grain warning
+2. **Providers and segments** — provider, gender, age band, and state tables with Wilson 95% CI
+3. **Usage and tenure** — tenure bands, usage quartiles, registration cohorts
+4. **Model performance** — fixed Phase 3 holdout metrics, confusion matrix, permutation importance, subgroup recall, calibration, temporal check
+5. **Churn predictions** — threshold selector (0.1840 / 0.0981), ranked queue, both fixed flags
+
+### Build Steps
+1. Open Power BI Desktop → Transform Data → New Source → Blank Query.
+2. Paste each of the five query blocks from `PowerQuery_M_Scoring.txt` into the
+   Advanced Editor. Name each query as the block says.
+3. Disable load for `Config` and `CurrentRelationships`.
+4. Set `PG_Server` and `PG_Database` in `Config`. Enter the Neon credentials in
+   the Power BI prompt. Do not put the password in a file.
+5. Add the DAX objects from `DAX_Measures.txt`.
+6. Build the five report pages per `PBIX_Build_Guide.md`.
+7. Publish to Power BI Service and configure daily scheduled refresh.
+
+### Verification
+```bash
+# After the PBIX refresh, export ScoredRelationships to CSV, then:
+uv run python PowerBI/verify_scores.py path/to/exported_scores.csv
+```
+
+Require `max_probability_diff <= 1e-6` and both flag columns true. A correct
+build reports about `3.9e-16`. The report must show 1,180 flagged at 0.1840
+(13.32%) and 3,286 at 0.0981 (37.09%).
+
+The repository does not commit a prediction table. `PowerBI/scored_latest.csv`
+is gitignored. The project rule bans prediction tables.
 
 ## Security and credentials
 
@@ -797,4 +867,9 @@ source tree.
 - The temporal holdout has higher churn prevalence and a worse Brier score. The
   app keeps the fixed Phase 3 threshold.
 - No model artifact is committed. The app refits and caches the pipeline.
-- Power BI and the public Streamlit URL are Phase 5–6 work.
+- Power BI applies the fixed Phase 3 coefficients to the active frame. Streamlit
+  refits on the active frame, so the two paths match only for the baseline
+  snapshot that produced `powerbi_model_export.json`. Regenerate the export
+  before you compare scores on a different dataset.
+- `PowerBI/project_dashboard.pbix` is not built yet. Power BI Desktop runs on
+  Windows, and this repository was prepared on Linux.

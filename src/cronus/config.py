@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_upload_mb: int = Field(default=25, gt=0)
     max_upload_rows: int = Field(default=200_000, gt=0)
+    admin_password: SecretStr | None = None
 
     @field_validator("database_url")
     @classmethod
@@ -88,6 +89,17 @@ class Settings(BaseSettings):
             normalize_postgres_url(value)
             return value
         return None
+
+    @field_validator("admin_password", mode="before")
+    @classmethod
+    def _normalise_admin_password(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, SecretStr):
+            return value if value.get_secret_value().strip() else None
+        if isinstance(value, str):
+            return value if value.strip() else None
+        return value
 
     @field_validator("log_level")
     @classmethod

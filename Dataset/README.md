@@ -97,8 +97,57 @@ to the snapshot date, 2023-05-04.
 - Multi-provider records, re-entry pairs, and churned historical relationships
   are valid observations and are never treated as duplicates.
 
+## Use in Phase 2
+
+The executed notebook at `Python/analysis.ipynb` reads this canonical file
+directly through `cronus.validation.validate_csv`. It checks the SHA-256 hash
+and file size before analysis. The notebook needs no Neon connection, `.env`
+file, or credentials.
+
+It keeps the relationship grain and reports relationship churn (19.87%) and
+current customer churn (9.56%) separately. It also uses the derived fields from
+the validation service, including `relationship_seq`, `relationship_count`,
+`is_latest_relationship`, and `tenure_days`.
+
+To re-execute the notebook:
+
+```bash
+uv sync --group notebook
+uv run --group notebook jupyter nbconvert \
+  --to notebook --execute --inplace \
+  --ExecutePreprocessor.timeout=900 \
+  Python/analysis.ipynb
+```
+
 ## Use in Phase 3
 
-Machine-learning work must model current/latest relationships only. Including
+Machine-learning work models current/latest relationships only. Including
 historical relationships would leak the dataset construction rule that every
 non-latest relationship is churned.
+
+The executed notebook at `Python/modeling.ipynb` follows this rule. It trains on
+the 8,860 latest relationships and excludes the 1,140 historical rows. It reads
+the canonical CSV through `cronus.modeling.load_current_frame`.
+
+## Use in Phase 4
+
+The Streamlit application reads the active dataset from Neon. It uses only rows
+with `is_latest_relationship = TRUE` for analytics and scoring. Historical rows
+never enter a page, a model fit, or a scored export. The repository read raises
+an error if a customer appears twice on the current grain, so it never
+deduplicates the frame.
+
+The Phase 4 app does not change this CSV. It does not add a model artifact or a
+prediction table. The final Phase 3 logistic model is refitted on the active
+current frame and cached in the Streamlit process. The decision threshold stays
+fixed at 0.1840 for the default policy and 0.0981 for the 70% recall policy.
+Every score display and CSV export carries the applied threshold.
+
+The app keeps the two churn measures separate:
+
+- **Relationship churn (all history):** 19.87% in the baseline snapshot
+- **Current customer churn (latest only):** 9.56% in the baseline snapshot
+
+Pages that compare segments or score relationships use only the current
+customer churn grain. The Overview and Admin pages show both measures with
+explicit labels.
