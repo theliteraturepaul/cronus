@@ -69,7 +69,13 @@ Phase 4 — analytics UI and admin workflow — is implemented:
 - Every score display and CSV export carries its decision threshold
 - Admin password gate protects upload, replacement, and activation, and fails
   closed when no password is configured
-- No model artifact, prediction table, new runtime dependency, or schema change
+- No model artifact, prediction table, or new runtime dependency
+
+Phase 4 addendum (2026-11-18): the app now has local email/password accounts and
+site-wide visitor analytics. Every dashboard page requires a signed-in account,
+and the Admin page keeps its separate password gate. The visitor strip shows
+unique visitors, seven-day visitors, seven-day page views, and account count.
+Migration `0002` adds `app_users` and `visitor_events`.
 
 Phase 5 is complete. Phase 6 is in progress: the Power Query scoring, the DAX
 objects, and the build guide are ready, and the PBIX build is pending. Phase 7
@@ -139,10 +145,12 @@ flowchart LR
 │       ├── usage.py               # tenure, usage, cohorts, correlations
 │       ├── performance.py         # Phase 3 model card and checks
 │       ├── predictions.py         # scored review queue and CSV export
+│       ├── account.py             # sign-up, sign-in, session, and sign-out
 │       └── admin.py               # password gate, upload, activation
 ├── src/cronus/
 │   ├── __init__.py
-│   ├── auth.py                    # constant-time admin password check
+│   ├── accounts.py                # account persistence and authentication
+│   ├── auth.py                    # scrypt hashing, policy, admin password check
 │   ├── config.py                  # settings and URL normalisation
 │   ├── db.py                      # pooled engine, sessions, status
 │   ├── logging.py
@@ -152,6 +160,7 @@ flowchart LR
 │   ├── validation.py              # CSV normalisation and derivation
 │   ├── ingest.py                  # transactional ingestion service
 │   ├── analytics.py               # current-grain descriptive tables
+│   ├── visitors.py                # anonymous page views and counts
 │   └── modeling/
 │       ├── __init__.py            # public modeling API
 │       ├── features.py            # feature contract, current frame, splits
@@ -162,17 +171,22 @@ flowchart LR
 ├── alembic/
 │   ├── env.py
 │   ├── script.py.mako
-│   └── versions/0001_initial_schema.py
+│   └── versions/
+│       ├── 0001_initial_schema.py
+│       └── 0002_accounts_and_visitors.py
 ├── tests/
 │   ├── conftest.py
 │   ├── test_config.py
 │   ├── test_auth.py
+│   ├── test_accounts.py
+│   ├── test_visitors.py
 │   ├── test_analytics.py
 │   ├── test_serving.py
 │   ├── test_validation.py
 │   ├── test_modeling.py
 │   ├── test_powerbi_export.py
-│   └── test_ingest_db.py
+│   ├── test_ingest_db.py
+│   └── test_accounts_db.py
 ├── .github/workflows/ci.yml
 ├── .streamlit/config.toml
 ├── .editorconfig
@@ -235,6 +249,16 @@ The Streamlit secret has priority over `ADMIN_PASSWORD`. If neither value is
 set, the Admin page stays locked and upload, replacement, and activation are
 unavailable.
 
+Set the visitor hash salt in `.env`:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Copy the output into .env:
+VISITOR_HASH_SALT=the-generated-value
+```
+
+The salt is a secret. A blank value disables visitor recording.
+
 ### 3. Install and migrate
 
 ```bash
@@ -242,8 +266,8 @@ uv sync --frozen
 uv run alembic upgrade head
 ```
 
-The migration creates the `datasets` and `customer_relationships` tables. The
-application never runs migrations at startup.
+The migration creates the `datasets`, `customer_relationships`, `app_users`, and
+`visitor_events` tables. The application never runs migrations at startup.
 
 ### 4. Run the app
 
@@ -251,8 +275,9 @@ application never runs migrations at startup.
 uv run streamlit run app/main.py
 ```
 
-Open the local Streamlit URL. The default page is **Overview**. To load the
-baseline snapshot, open **Admin**, sign in, upload
+Open the local Streamlit URL. The first page is **Account**. Create an account,
+and the six dashboard pages appear in the sidebar. To load the baseline
+snapshot, open **Admin**, enter the admin password, upload
 `Dataset/project_dataset.csv`, give the dataset a name, keep **Activate after
 load** checked, and click **Load dataset**.
 
@@ -335,6 +360,9 @@ Database tests refuse to run when `TEST_DATABASE_URL` equals `DATABASE_URL`.
 | `APP_ENV` | no | `development` | `development`, `test`, or `production` |
 | `LOG_LEVEL` | no | `INFO` | Python logging level |
 | `ADMIN_PASSWORD` | no | — | Admin gate for upload, replacement, and activation. Blank keeps the gate locked |
+| `VISITOR_HASH_SALT` | no | — | Secret salt for the anonymous visitor HMAC. Blank disables visitor recording |
+| `ALLOW_SIGNUP` | no | `true` | Show the create-account form on the Account page |
+| `SESSION_MAX_HOURS` | no | `12` | Signed-in session lifetime in hours |
 | `MAX_UPLOAD_MB` | no | `25` | Upload size guard |
 | `MAX_UPLOAD_ROWS` | no | `200000` | Upload row guard |
 
@@ -343,9 +371,15 @@ working directory. Environment variables take precedence over the file.
 
 ## Using the Streamlit app
 
-The app registers six pages with `st.navigation` and `st.Page` in `app/main.py`.
-`app/shared.py` owns cached database reads, the sidebar, and reusable display
-helpers. Page modules live in `app/views/`.
+The app registers seven pages with `st.navigation` and `st.Page` in
+`app/main.py` after sign-in. A signed-out visitor gets only the Account page.
+`app/shared.py` owns cached database reads, the sidebar, the visitor strip, and
+reusable display helpers. Page modules live in `app/views/`.
+
+A bordered visitor strip sits above every page, including the sign-in page. It
+shows unique visitors, seven-day visitors, seven-day page views, and the active
+account count. The strip never blocks the page, and it renders nothing when the
+database read fails.
 
 - **Overview**: active dataset name, snapshot date, registration window,
   unique customers, relationship counts, partner count, multi-provider
@@ -365,11 +399,18 @@ helpers. Page modules live in `app/views/`.
 - **Admin**: password gate, upload, replacement, and activation. The gate
   resolves `st.secrets["admin_password"]` first, then `Settings.admin_password`
   from `ADMIN_PASSWORD`. When both are blank, the page fails closed.
+- **Account**: create an account, sign in, and sign out. The page shows the
+  display name, email address, and member-since date. Sign-in locks for 60
+  seconds after five failed attempts in one session.
+
+Every page except Account requires a signed-in account. The Admin page keeps
+its separate password gate, so admin actions need both the account session and
+the admin password.
 
 Cached reads have a 60-second TTL. The sidebar **Refresh data** button clears
 both the data cache and the fitted-model cache. Uploads and activations also
-clear both caches. The app does not contain SQL; it calls repository and
-ingestion services only.
+clear both caches. The app does not contain SQL; it calls repository, account,
+visitor, and ingestion services only.
 
 The model is fitted once per active dataset version and cached with
 `st.cache_resource`. It uses the Phase 3 `fit_final_model` and `predict_churn`
@@ -582,6 +623,57 @@ leave the database unchanged. A byte-identical file offers activation of the
 existing dataset or an explicit replacement. Activation is atomic, and a
 successful upload or activation clears the data and model caches.
 
+## Accounts and visitor analytics
+
+Migration `0002_accounts_and_visitors.py` adds two tables.
+
+- `app_users` stores one row per account: case-folded unique email, display
+  name, scrypt password hash, active flag, created date, and last sign-in date.
+- `visitor_events` stores one row per throttled page view: a 32-character
+  visitor digest, the Streamlit session id, an optional account id, the page
+  path, and the timestamp.
+
+Accounts are local to the application. Sign-up asks for a display name, email,
+password, and password confirmation. The password policy is 12 to 128
+characters with no composition rules, and the password must not equal the email
+address or the display name.
+
+Passwords use `hashlib.scrypt` from the standard library with `n=16384`, `r=8`,
+`p=1`, a random 16-byte salt, and a 64-byte digest. Each hash carries its own
+parameters in `scrypt$n$r$p$salt$hash` form, so a future parameter change needs
+no schema change. Verification uses `hmac.compare_digest`. An unknown email
+still runs one hash against a dummy value, so a failed lookup takes the same
+time as a wrong password.
+
+The signed-in session lives in `st.session_state` and ends after
+`SESSION_MAX_HOURS`, or when the browser opens a new Streamlit session. Sign-out
+clears the account, the admin gate, and any pending lock state. The app stores
+no session cookie.
+
+The visitor strip counts distinct `visitor_key` values. The key is
+`HMAC-SHA256(salt, "<ip>|<user-agent>")`, truncated to 32 hexadecimal
+characters. The application never stores the raw IP address or the raw user
+agent. On localhost, where Streamlit reports no IP address, the session id
+replaces the IP so local runs still produce counts. One session writes at most
+one row per page per 30 minutes, and the throttle state lives in the Streamlit
+session.
+
+Set `VISITOR_HASH_SALT` to a long random string before you deploy. Generate one
+with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+A blank salt disables recording. The banner then shows the stored counts and a
+caption that explains the state. The salt is a secret because the digest is
+pseudonymous, not anonymous. A person who knows the salt and guesses an IP
+address and user agent can confirm a match.
+
+Account sign-up is open by default and no verification email is sent. The gate
+controls casual access and demonstrates authentication. It does not protect
+sensitive data. Set `ALLOW_SIGNUP=false` after you create the accounts you need.
+
 ## Data dictionary
 
 ### Source columns
@@ -724,14 +816,17 @@ The app calls this service; no SQL lives in `app/`.
 
 The unit suite covers the baseline metrics, relationship derivation, error and
 warning rules, URL normalisation, password masking, upload limits, admin
-password verification, current-frame analytics, and the serving contract. The
+password verification, scrypt hashing, account policy, visitor-key hashing,
+the page-view throttle, current-frame analytics, and the serving contract. The
 analytics tests check Wilson intervals, segment coverage, ordered bands, usage
 quartiles, cohorts, filters, and rejection of historical or duplicate current
 rows. The serving tests check the fixed constants, model fit on the full current
 frame, score coverage, threshold flags, review-priority bands, summary counts,
 and input immutability. DB tests create the schema in the test database, ingest
 the baseline, verify dual-grain metrics, duplicate rejection, replacement, and
-activation, then drop their tables. They are excluded from CI.
+activation, then drop their tables. The account DB tests also create and
+authenticate accounts, reject duplicate emails, set `last_login_at`, and check
+visitor distinct counts. They are excluded from CI.
 
 The Phase 2 notebook verifies the snapshot before analysis. It asserts the file
 SHA-256, file size, 10,000 rows, 8,860 customers, 1,987 relationship churn
@@ -751,9 +846,14 @@ counts, 10 figures, no error output, and no stderr output.
 | 2 | Exploratory data analysis notebook | Completed — `Python/analysis.ipynb` |
 | 3 | Current-relationship churn model and evaluation | Completed — `src/cronus/modeling/` and `Python/modeling.ipynb` |
 | 4 | Full analytics UI and admin-gated upload workflow | Completed — `app/` multipage Streamlit application |
-| 5 | Deployment and public Streamlit URL | Completed — https://churn-lab.streamlit.app/ |
+| 5 | Deployment and public Streamlit URL | Completed — https://churn-lab.streamlit.app/ (account sign-in required) |
 | 6 | Power BI dashboard in Import mode | In progress — scoring queries, DAX, and build guide are ready; `project_dashboard.pbix` is pending a Windows build |
 | 7 | Final documentation and submission README | `01_Project_Documentation.pdf`, `GitHub/README.md` |
+
+Phase 4 addendum (2026-11-18): account sign-up and sign-in plus site-wide
+visitor analytics. Migration `0002` adds the two tables. The deployment needs
+`VISITOR_HASH_SALT` and a completed `alembic upgrade head` before the new pages
+work.
 
 ## Instructor submission mapping
 
@@ -840,8 +940,15 @@ is gitignored. The project rule bans prediction tables.
 - `.env` and `.streamlit/secrets.toml` are gitignored.
 - Full connection URLs are never logged or displayed; passwords are masked.
 - Database access is parameterised through SQLAlchemy.
+- Account passwords use scrypt with a random 16-byte salt and
+  `hmac.compare_digest`. No plaintext or reversible value is stored.
+- Every dashboard page requires an active account session.
 - Upload, replacement, and activation require the admin password.
 - The admin password is compared with `hmac.compare_digest` and never displayed.
+- Visitor keys are truncated HMAC-SHA256 digests. The application stores no raw
+  IP address, raw user agent, or cookie value.
+- `VISITOR_HASH_SALT` is a secret. Keep it out of the repository and rotate it
+  only when you accept that the unique-visitor count restarts.
 - `TEST_DATABASE_URL` must point to a separate database or branch. DB tests
   refuse to run against the app database.
 
@@ -849,6 +956,14 @@ is gitignored. The project rule bans prediction tables.
 
 - The upload panel remains local to the Streamlit process. The Admin page
   requires a configured password and fails closed when none is set.
+- Account sign-up is open and no verification email is sent. The gate
+  demonstrates authentication and does not protect sensitive data.
+- A full browser reload creates a new Streamlit session, so the viewer must sign
+  in again. The app stores no persistent session cookie.
+- Unique-visitor counts are approximate. NAT or a shared address can merge two
+  people into one visitor, and a mobile IP change can split one person into two.
+- The visitor strip shows stored counts when `VISITOR_HASH_SALT` is blank, and
+  it records nothing in that state.
 - The dataset has no explicit churn date. Tenure uses the documented
   next-registration/snapshot convention.
 - The root source CSV is gitignored. The committed dataset is

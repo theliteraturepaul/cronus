@@ -241,3 +241,96 @@ class CustomerRelationship(Base):
     )
 
     dataset: Mapped[Dataset] = relationship(back_populates="relationships")
+
+
+class AppUser(Base):
+    """One application account with a scrypt password hash.
+
+    The password hash is the only credential material stored.  Email addresses
+    are case-folded before they reach this table.
+    """
+
+    __tablename__ = "app_users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_app_users_email"),
+        CheckConstraint("email = lower(email)", name="email_lowercase"),
+        Index("ix_app_users_created_at", "created_at"),
+        {
+            "comment": (
+                "One row per signed-up viewer. password_hash uses the "
+                "self-describing scrypt format; no plaintext is stored."
+            )
+        },
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    visits: Mapped[list[VisitorEvent]] = relationship(
+        back_populates="account",
+        passive_deletes=True,
+    )
+
+
+class VisitorEvent(Base):
+    """One throttled page view from one anonymous visitor key.
+
+    visitor_key is a truncated HMAC-SHA256 digest of the client IP address and
+    user agent.  The raw values are never stored.
+    """
+
+    __tablename__ = "visitor_events"
+    __table_args__ = (
+        Index("ix_visitor_events_viewed_at", "viewed_at"),
+        Index("ix_visitor_events_visitor_key_viewed_at", "visitor_key", "viewed_at"),
+        Index("ix_visitor_events_session_id_viewed_at", "session_id", "viewed_at"),
+        {
+            "comment": (
+                "Page-view events for the visitor banner. One session writes "
+                "at most one row per page per 30 minutes."
+            )
+        },
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    visitor_key: Mapped[str] = mapped_column(
+        CHAR(32),
+        nullable=False,
+        comment="First 32 hex characters of the HMAC-SHA256 visitor digest.",
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    page_path: Mapped[str] = mapped_column(Text, nullable=False)
+    viewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    account: Mapped[AppUser | None] = relationship(back_populates="visits")

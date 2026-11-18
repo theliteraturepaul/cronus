@@ -115,6 +115,41 @@ def test_settings_rejects_invalid_upload_limits() -> None:
         )
 
 
+def test_blank_visitor_salt_is_unset() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://u:p@host/db",
+        visitor_hash_salt="   ",
+    )
+    assert settings.visitor_hash_salt is None
+    assert settings.visitor_salt is None
+
+
+def test_visitor_salt_is_available_without_exposing_the_secret() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://u:p@host/db",
+        visitor_hash_salt="pepper",
+    )
+    assert settings.visitor_salt == "pepper"
+    assert "pepper" not in repr(settings)
+
+
+def test_account_settings_defaults() -> None:
+    settings = Settings(_env_file=None, database_url="postgresql://u:p@host/db")
+    assert settings.allow_signup is True
+    assert settings.session_max_hours == 12
+
+
+def test_session_max_hours_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            database_url="postgresql://u:p@host/db",
+            session_max_hours=0,
+        )
+
+
 def test_upload_limits_accept_boundary_values() -> None:
     enforce_upload_limits(
         size_bytes=25 * 1024 * 1024,

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import time
 import uuid
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 import pandas as pd
 import streamlit as st
 
 from cronus.analytics import filter_current_frame
-from cronus.config import Settings
+from cronus.auth import hash_visitor_key
+from cronus.config import Settings, get_settings
 from cronus.db import check_connection, session_scope
 from cronus.modeling import prepare_current_frame
 from cronus.modeling.serving import (
@@ -24,10 +29,17 @@ from cronus.repository import (
     list_datasets,
 )
 from cronus.schemas import (
+    AccountInfo,
     ActiveDatasetSummary,
     ConnectionInfo,
     DatasetInfo,
     ValidationReport,
+    VisitorSnapshot,
+)
+from cronus.visitors import (
+    read_visitor_snapshot,
+    record_visit,
+    should_record,
 )
 
 logger = logging.getLogger("cronus.app")
@@ -110,6 +122,223 @@ def show_flash() -> None:
     message = st.session_state.pop("flash_success", None)
     if message:
         st.success(message)
+
+
+MAX_VISITOR_LOG_ENTRIES = 50
+
+
+def current_account() -> AccountInfo | None:
+    """Return the signed-in account, or None when the session is absent or stale."""
+
+    raw = st.session_state.get("account")
+    signed_in_at = st.session_state.get("signed_in_at")
+    if not isinstance(raw, dict) or not isinstance(signed_in_at, (int, float)):
+        return None
+
+    max_hours = 12
+    with contextlib.suppress(Exception):
+        max_hours = get_settings().session_max_hours
+
+    if time.time() - float(signed_in_at) > max_hours * 3600:
+        sign_out_session()
+        st.session_state["account_expired"] = True
+        return None
+
+    try:
+        return AccountInfo.model_validate(raw)
+    except Exception:
+        sign_out_session()
+        return None
+
+
+def sign_in_session(account: AccountInfo) -> None:
+    """Store the account in the browser session."""
+
+    st.session_state["account"] = account.model_dump()
+    st.session_state["signed_in_at"] = time.time()
+    st.session_state.pop("account_expired", None)
+
+
+def sign_out_session() -> None:
+    """Clear the account, the admin gate, and any pending lock state."""
+
+    for key in (
+        "account",
+        "signed_in_at",
+        "admin_authenticated",
+        "account_failed_attempts",
+        "account_lock_until",
+        "admin_failed_attempts",
+        "admin_lock_until",
+    ):
+        st.session_state.pop(key, None)
+
+
+def render_guest_sidebar() -> None:
+    """Render the sidebar for a visitor who is not signed in."""
+
+    st.sidebar.markdown("## Cronus")
+    st.sidebar.caption("Telecom churn intelligence")
+    st.sidebar.divider()
+    st.sidebar.info("Sign in to open the dashboard.")
+    st.sidebar.caption("Accounts are local to this application. No verification email is sent.")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def visitor_snapshot() -> VisitorSnapshot | None:
+    """Return the cached visitor counts, or None when the read fails."""
+
+    since = datetime.now(UTC) - timedelta(days=7)
+    try:
+        with session_scope() as session:
+            return read_visitor_snapshot(session, since=since)
+    except Exception as exc:
+        logger.warning("Visitor counts unavailable: %s", exc)
+        return None
+
+
+def record_current_visit(
+    account: AccountInfo | None,
+    *,
+    settings: Settings | None = None,
+) -> None:
+    """Record at most one page view per session and page in 30 minutes."""
+
+    resolved = settings
+    if resolved is None:
+        try:
+            resolved = get_settings()
+        except Exception:
+            return
+
+    salt = resolved.visitor_salt
+    if salt is None:
+        return
+
+    session_id = _visitor_session_id()
+    page_path = _current_page_path()
+    now = time.time()
+
+    log = st.session_state.get("visitor_log")
+    if not isinstance(log, dict):
+        log = {}
+    log_key = f"{session_id}:{page_path}"
+    if not should_record(log.get(log_key), now):
+        return
+
+    log[log_key] = now
+    if len(log) > MAX_VISITOR_LOG_ENTRIES:
+        stale = sorted(log, key=log.get)[: len(log) - MAX_VISITOR_LOG_ENTRIES]
+        for item in stale:
+            log.pop(item, None)
+    st.session_state["visitor_log"] = log
+
+    visitor_key = hash_visitor_key(
+        ip=_client_ip(),
+        user_agent=_request_header("User-Agent"),
+        salt=salt,
+        fallback=f"local:{session_id}",
+    )
+
+    try:
+        with session_scope() as session:
+            record_visit(
+                session,
+                visitor_key=visitor_key,
+                session_id=session_id,
+                user_id=account.id if account is not None else None,
+                page_path=page_path,
+            )
+    except Exception as exc:
+        logger.warning("Visitor write failed: %s", exc)
+        st.session_state["visitor_log"].pop(log_key, None)
+
+
+def render_visitor_banner(account: AccountInfo | None = None) -> None:
+    """Render the site-wide visitor strip. Never block the page on failure."""
+
+    try:
+        settings: Settings | None
+        try:
+            settings = get_settings()
+        except Exception:
+            settings = None
+
+        recording = settings is not None and settings.visitor_salt is not None
+        if recording:
+            record_current_visit(account, settings=settings)
+
+        snapshot = visitor_snapshot()
+        if snapshot is None:
+            return
+
+        with st.container(border=True):
+            st.caption("Visitor analytics")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Unique visitors", f"{snapshot.unique_all_time:,}")
+            col2.metric("Visitors · 7 days", f"{snapshot.unique_7d:,}")
+            col3.metric("Page views · 7 days", f"{snapshot.page_views_7d:,}")
+            col4.metric("Accounts", f"{snapshot.account_count:,}")
+            if recording:
+                st.caption("Anonymous counts. No IP addresses or cookies are stored.")
+            else:
+                st.caption("Visitor recording is off. Set `VISITOR_HASH_SALT` to start counting.")
+    except Exception as exc:
+        logger.warning("Visitor banner unavailable: %s", exc)
+
+
+def _visitor_session_id() -> uuid.UUID:
+    raw = st.session_state.get("visitor_session_id")
+    if isinstance(raw, str):
+        try:
+            return uuid.UUID(raw)
+        except ValueError:
+            pass
+
+    value = uuid.uuid4()
+    st.session_state["visitor_session_id"] = str(value)
+    return value
+
+
+def _client_ip() -> str | None:
+    try:
+        value = st.context.ip_address
+    except Exception:
+        return None
+    return str(value) if value else None
+
+
+def _request_header(name: str) -> str | None:
+    try:
+        headers = st.context.headers
+    except Exception:
+        return None
+
+    try:
+        value = headers.get(name)
+    except Exception:
+        value = None
+    if value:
+        return str(value)
+
+    try:
+        items = headers.items()
+    except Exception:
+        return None
+    for key, item in items:
+        if key.casefold() == name.casefold() and item:
+            return str(item)
+    return None
+
+
+def _current_page_path() -> str:
+    try:
+        raw = st.context.url
+    except Exception:
+        raw = None
+    if not raw:
+        return "/"
+    return urlparse(str(raw)).path or "/"
 
 
 def show_db_failure(action: str, exc: Exception) -> None:
@@ -226,9 +455,19 @@ def render_sidebar() -> None:
         st.rerun()
 
     st.sidebar.divider()
+    account = current_account()
+    if account is not None:
+        st.sidebar.success(f"Signed in as {account.display_name}")
+        if st.sidebar.button("Sign out", width="stretch", key="account-signout"):
+            sign_out_session()
+            st.rerun()
+    else:
+        st.sidebar.caption("Account: signed out")
+
+    st.sidebar.divider()
     if st.session_state.get("admin_authenticated"):
         st.sidebar.success("Admin: signed in")
-        if st.sidebar.button("Sign out", width="stretch"):
+        if st.sidebar.button("Sign out of admin", width="stretch", key="admin-signout"):
             st.session_state.pop("admin_authenticated", None)
             st.rerun()
     else:

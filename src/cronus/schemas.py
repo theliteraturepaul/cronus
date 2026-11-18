@@ -118,6 +118,25 @@ class IngestResult(BaseModel):
     elapsed_seconds: float
 
 
+class AccountInfo(BaseModel):
+    """One application account, without the password hash."""
+
+    id: uuid.UUID
+    email: str
+    display_name: str
+    created_at: datetime
+    last_login_at: datetime | None = None
+
+
+class VisitorSnapshot(BaseModel):
+    """Aggregate visitor counts shown in the site banner."""
+
+    unique_all_time: int
+    unique_7d: int
+    page_views_7d: int
+    account_count: int
+
+
 class CronusError(Exception):
     """Base class for expected, user-facing Cronus errors."""
 
@@ -148,3 +167,11 @@ class DatasetNotFound(CronusError):
 
 class UploadLimitExceeded(CronusError):
     """Raised when a file exceeds the configured size or row limit."""
+
+
+class DuplicateAccount(CronusError):
+    """Raised when an email address already has an account."""
+
+    def __init__(self, email: str) -> None:
+        self.email = email
+        super().__init__(f"An account for {email!r} already exists.")

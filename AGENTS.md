@@ -4,7 +4,7 @@ Cronus is a telecom churn project for an instructor submission. The submission m
 
 ## Current State
 
-Last updated: 2026-11-17.
+Last updated: 2026-11-18.
 
 ### Goal and acceptance criteria
 
@@ -15,7 +15,7 @@ Phase status:
 - Phase 1: done.
 - Phase 2: done locally.
 - Phase 3: done locally.
-- Phase 4: done locally.
+- Phase 4: done, including accounts and visitor analytics.
 - Phase 5: documents done. The deployment is not verified.
 - Phase 6: in progress. All assets are ready. The PBIX is not built.
 - Phase 7: not started.
@@ -45,6 +45,14 @@ Phase 7 acceptance criteria:
 - Phase 4 service layer: `config.admin_password`, `auth.verify_admin_password`, `analytics.py`, `repository.get_current_relationships`, `modeling/serving.py`.
 - Phase 4 tests: `tests/test_auth.py`, `tests/test_analytics.py`, `tests/test_serving.py`, and the extended `tests/test_config.py`.
 - Phase 4 local smoke test: six pages load, admin sign-in works, threshold switch works.
+- Phase 4 addendum (2026-11-18): local accounts and visitor analytics. Migration `0002_accounts_and_visitors.py` applied to Neon. New `app_users` and `visitor_events` tables.
+- Account service: `src/cronus/accounts.py` with scrypt hashing in `src/cronus/auth.py`, 12 to 128 character policy, duplicate-email rejection, and a dummy hash for unknown emails.
+- Account page: `app/views/account.py`. Sign-up, sign-in, sign-out, five-attempt lock for 60 seconds, and `ALLOW_SIGNUP`.
+- Gate: every dashboard page requires an account. `app/main.py` registers only the Account page when signed out. Admin keeps its password gate.
+- Visitor analytics: `src/cronus/visitors.py` and the strip in `app/shared.py`. HMAC-SHA256 visitor key, no raw IP or user agent, 30-minute throttle per session and page.
+- Addendum tests: `tests/test_accounts.py`, `tests/test_visitors.py`, `tests/test_accounts_db.py`, and the extended `tests/test_auth.py` and `tests/test_config.py`. Suite: 147 passed, 9 deselected.
+- Addendum smoke tests: AppTest covers sign-up, sign-out, wrong password, sign-in, and the visitor strip. The strip writes one event on the first run and zero on the next run in the same session.
+- `VISITOR_HASH_SALT` added to the local `.env` and `.env.example`. The value is not committed.
 - Phase 5 root `README.md` with the public URL and `GitHub/README.md`. Commit `d2ba6ff` is on `origin/main`.
 - Phase 6 model export: `PowerBI/powerbi_model_export.json`. The file moved from the repository root. It matches a fresh fit exactly.
 - Phase 6 Power Query script: `PowerBI/PowerQuery_M_Scoring.txt`. It now contains five queries: Config, ActiveDataset, CurrentRelationships, DateTable, and ScoredRelationships.
@@ -58,8 +66,8 @@ Phase 7 acceptance criteria:
 ### In progress
 
 - Phase 6 PBIX. `PowerBI/project_dashboard.pbix` does not exist. Power BI Desktop does not run in this WSL environment.
-- The local work is not committed. `git status` lists the changed and untracked paths.
-- The deployment is not verified. The remote repository does not contain the Phase 4 page modules.
+- The accounts and visitor addendum is not committed. `git status` lists the new and changed paths.
+- The deployment is not verified. `origin/main` is `bbf506f`, so the live app does not have the addendum files. The Neon schema is at `0002`, but the deployed app needs `VISITOR_HASH_SALT` in Streamlit secrets.
 
 ### Next steps
 
@@ -91,11 +99,13 @@ Phase 7 acceptance criteria:
    uv run ruff format --check .
    uv run mypy src
    uv run pytest -m "not db" -q
-   git add .env.example AGENTS.md Dataset/README.md README.md app src tests Python PowerBI pyproject.toml uv.lock .github .gitignore
-   git add -u Python
-   git commit -m "feat: phase 4 app and phase 6 power bi scoring assets"
+   git add .env.example AGENTS.md README.md GitHub/README.md app src tests alembic
+   git commit -m "feat: add accounts and visitor analytics"
    git push origin main
    ```
+
+   Then set `VISITOR_HASH_SALT` in the Streamlit Cloud secrets and redeploy. The
+   migration already ran against Neon.
 
 4. Update README row 6 from "In progress" to "Completed - `PowerBI/project_dashboard.pbix`" after the file exists. Copy the root README to `GitHub/README.md`.
 
@@ -113,7 +123,13 @@ Phase 7 acceptance criteria:
 - Dual grain. The 19.87% rate counts every relationship churn event in the history. The 9.56% rate counts current customers only. Never present one rate as the other.
 - Current-frame contract. Use latest rows only. Never train on historical rows. Never deduplicate current rows.
 - Admin gate fails closed. The gate allows 5 attempts and then locks for 60 seconds. The password is never displayed.
-- No schema change, no retune, no `class_weight` change, and no threshold reselection.
+- Accounts stay local. No OAuth provider and no email service. Passwords use standard-library scrypt, so the addendum adds no runtime dependency.
+- Every dashboard page requires an account. The user selected this scope. The Account page is the only public page, and the visitor strip stays public.
+- The admin gate stays separate. Admin actions need the account session and the admin password.
+- Visitor identity is a salted HMAC of the IP address and user agent. The app stores no raw IP, raw user agent, or cookie. Counts are approximate because NAT can merge visitors and mobile IP changes can split them.
+- The visitor write is throttled in session state to one row per page per 30 minutes. This prevents a row on every Streamlit rerun.
+- No schema change to the churn tables. Migration `0002` adds only `app_users` and `visitor_events`.
+- No retune, no `class_weight` change, and no threshold reselection.
 - No new runtime dependency. `scikit-learn` entered in Phase 3.
 - Phase 5 and Phase 6 prompts keep full length. Do not compress them with the `asd-ste100` skill.
 - Unnumbered folders stay. The README map handles the submission names.
@@ -135,9 +151,10 @@ Use these values in the report and in tests.
 
 ### Files touched
 
-- Configuration and services: `src/cronus/config.py`, `src/cronus/auth.py`, `src/cronus/analytics.py`, `src/cronus/repository.py`, `src/cronus/modeling/`.
+- Configuration and services: `src/cronus/config.py`, `src/cronus/auth.py`, `src/cronus/accounts.py`, `src/cronus/visitors.py`, `src/cronus/analytics.py`, `src/cronus/repository.py`, `src/cronus/modeling/`.
+- Data contracts and schema: `src/cronus/models.py`, `src/cronus/schemas.py`, `alembic/versions/0002_accounts_and_visitors.py`.
 - Application: `app/main.py`, `app/shared.py`, `app/views/`.
-- Tests: `tests/test_auth.py`, `tests/test_analytics.py`, `tests/test_serving.py`, `tests/test_modeling.py`, `tests/test_config.py`, `tests/test_powerbi_export.py`.
+- Tests: `tests/test_auth.py`, `tests/test_accounts.py`, `tests/test_visitors.py`, `tests/test_accounts_db.py`, `tests/test_analytics.py`, `tests/test_serving.py`, `tests/test_modeling.py`, `tests/test_config.py`, `tests/test_powerbi_export.py`.
 - Notebooks: `Python/analysis.ipynb`, `Python/modeling.ipynb`.
 - Power BI: `PowerBI/PowerQuery_M_Scoring.txt`, `PowerBI/DAX_Measures.txt`, `PowerBI/PBIX_Build_Guide.md`, `PowerBI/powerbi_model_export.json`, `PowerBI/verify_scores.py`.
 - Documentation: `README.md`, `GitHub/README.md`, `AGENTS.md`, `Dataset/README.md`.
@@ -148,14 +165,18 @@ Use these values in the report and in tests.
 - PBIX absent. Power BI Desktop does not run in this WSL environment. Build the file on Windows.
 - Windows-only build. The guide assumes Power BI Desktop and the built-in PostgreSQL connector.
 - Parity scope. The PBIX uses fixed coefficients. Streamlit refits. Parity holds for the baseline active dataset. Regenerate `powerbi_model_export.json` before a comparison on a new dataset.
-- Repository gap. `origin/main` is `d2ba6ff`. The remote `app/` directory contains only `main.py`. The Phase 4 to Phase 6 files are uncommitted. The deployment cannot load the six-page app until you push those files.
-- Deployment. The public Streamlit URL is not verified against the current remote tree.
-- DB tests. `TEST_DATABASE_URL` is not set. 4 tests are deselected.
-- AppTest limitation. `AppTest.switch_page` does not resolve callable `st.Page` objects. Test each page with `AppTest.from_string`.
-- Documentation drift. `GitHub/README.md` is a copy of the previous root README. Refresh it after the root README changes. README row 6 stays "In progress" until the PBIX exists.
+- Repository gap. `origin/main` is `bbf506f`. The accounts and visitor addendum is uncommitted. The live app cannot show the new pages until you push those files and redeploy.
+- Deployment. The public Streamlit URL is not verified against the current remote tree. Set `VISITOR_HASH_SALT` in the Streamlit Cloud secrets.
+- DB tests. `TEST_DATABASE_URL` is not set. 9 tests are deselected.
+- AppTest limitation. `AppTest.switch_page` does not resolve callable `st.Page` objects. Test each page with `AppTest.from_string`. The sign-in gate and account flow work under `AppTest.from_file("app/main.py")`.
+- Session limit. `st.session_state` is not persistent. A full browser reload starts a new Streamlit session, so the viewer signs in again. The app stores no session cookie.
+- Account scope. Sign-up is open and no verification email is sent. The gate demonstrates authentication and does not protect sensitive data. Set `ALLOW_SIGNUP=false` after you create the needed accounts.
+- Visitor accuracy. Counts are approximate. NAT can merge two people into one visitor, and a mobile IP change can split one person into two.
+- Visitor salt. A blank `VISITOR_HASH_SALT` stops recording. The banner shows stored counts with a configuration caption.
+- Documentation drift. Refresh `GitHub/README.md` after each root README change. README row 6 stays "In progress" until the PBIX exists.
 - PDF. `01_Project_Documentation.pdf` does not exist.
 - Build tool scope. `PowerBI/verify_scores.py` uses a `__main__` guard. It is a build-time check, not an application entry point. The Streamlit app has no CLI. The file carries `# ruff: noqa: E402` for its `src/` path bootstrap.
-- Secrets. `.env` exists. `.streamlit/secrets.toml` does not exist. The admin gate fails closed. Never print or commit `.env`.
+- Secrets. `.env` exists and contains `VISITOR_HASH_SALT`. `.streamlit/secrets.toml` does not exist. The admin gate fails closed. Never print or commit `.env`.
 
 ### Commands to verify
 
@@ -167,20 +188,24 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 uv run pytest -m "not db" -q
+uv run alembic upgrade head
 uv run streamlit run app/main.py
 ```
 
 Expected results:
 
 - `ruff` and `mypy` report no issues.
-- `pytest` reports 103 passed and 4 deselected.
-- Streamlit starts and shows six pages.
+- `pytest` reports 147 passed and 9 deselected.
+- `alembic` reports `0002 (head)` and applies no new step.
+- Streamlit starts on the Account page. Create an account, and seven pages appear.
 
 Run the DB tests only when a separate test database exists:
 
 ```bash
 uv run pytest -m db -q
 ```
+
+Expected: 9 passed. The five account and visitor tests join the four ingestion tests.
 
 Run the Power BI parity test without a database:
 

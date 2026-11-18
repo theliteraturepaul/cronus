@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import streamlit as st
-from shared import render_sidebar, show_flash
+from shared import (
+    current_account,
+    render_guest_sidebar,
+    render_sidebar,
+    render_visitor_banner,
+    show_flash,
+)
+from views import account as account_view
 from views import admin, overview, performance, predictions, providers, usage
 
 from cronus.config import get_settings
@@ -26,47 +33,72 @@ except Exception:
 
 configure_logging(settings.log_level)
 
-pages = [
-    st.Page(
-        overview.render,
-        title="Overview",
-        icon=":material/dashboard:",
-        url_path="overview",
-        default=True,
-    ),
-    st.Page(
-        providers.render,
-        title="Providers and segments",
-        icon=":material/groups:",
-        url_path="providers",
-    ),
-    st.Page(
-        usage.render,
-        title="Usage and tenure",
-        icon=":material/query_stats:",
-        url_path="usage",
-    ),
-    st.Page(
-        performance.render,
-        title="Model performance",
-        icon=":material/monitoring:",
-        url_path="performance",
-    ),
-    st.Page(
-        predictions.render,
-        title="Churn predictions",
-        icon=":material/notification_important:",
-        url_path="predictions",
-    ),
-    st.Page(
-        admin.render,
-        title="Admin",
-        icon=":material/admin_panel_settings:",
-        url_path="admin",
-    ),
-]
-
-navigation = st.navigation(pages, position="sidebar")
-render_sidebar()
+account = current_account()
 show_flash()
-navigation.run()
+render_visitor_banner(account)
+
+if account is None:
+    render_guest_sidebar()
+    guest_navigation = st.navigation(
+        [
+            st.Page(
+                account_view.render,
+                title="Sign in",
+                icon=":material/login:",
+                url_path="account",
+                default=True,
+            )
+        ],
+        position="hidden",
+    )
+    guest_navigation.run()
+else:
+    pages = [
+        st.Page(
+            overview.render,
+            title="Overview",
+            icon=":material/dashboard:",
+            url_path="overview",
+            default=True,
+        ),
+        st.Page(
+            providers.render,
+            title="Providers and segments",
+            icon=":material/groups:",
+            url_path="providers",
+        ),
+        st.Page(
+            usage.render,
+            title="Usage and tenure",
+            icon=":material/query_stats:",
+            url_path="usage",
+        ),
+        st.Page(
+            performance.render,
+            title="Model performance",
+            icon=":material/monitoring:",
+            url_path="performance",
+        ),
+        st.Page(
+            predictions.render,
+            title="Churn predictions",
+            icon=":material/notification_important:",
+            url_path="predictions",
+        ),
+        st.Page(
+            admin.render,
+            title="Admin",
+            icon=":material/admin_panel_settings:",
+            url_path="admin",
+        ),
+        st.Page(
+            account_view.render,
+            title="Account",
+            icon=":material/person:",
+            url_path="account",
+        ),
+    ]
+
+    render_sidebar()
+    navigation = st.navigation(pages, position="sidebar")
+    navigation.run()

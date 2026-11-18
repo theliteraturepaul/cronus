@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(default=25, gt=0)
     max_upload_rows: int = Field(default=200_000, gt=0)
     admin_password: SecretStr | None = None
+    visitor_hash_salt: SecretStr | None = None
+    allow_signup: bool = True
+    session_max_hours: int = Field(default=12, gt=0)
 
     @field_validator("database_url")
     @classmethod
@@ -90,9 +93,9 @@ class Settings(BaseSettings):
             return value
         return None
 
-    @field_validator("admin_password", mode="before")
+    @field_validator("admin_password", "visitor_hash_salt", mode="before")
     @classmethod
-    def _normalise_admin_password(cls, value: object) -> object:
+    def _normalise_secret(cls, value: object) -> object:
         if value is None:
             return None
         if isinstance(value, SecretStr):
@@ -125,6 +128,15 @@ class Settings(BaseSettings):
     @property
     def masked_database_url(self) -> str:
         return mask_password(self.sqlalchemy_url)
+
+    @property
+    def visitor_salt(self) -> str | None:
+        """Return the visitor HMAC salt, or None when it is not configured."""
+
+        if self.visitor_hash_salt is None:
+            return None
+        value = self.visitor_hash_salt.get_secret_value().strip()
+        return value or None
 
 
 @lru_cache(maxsize=1)
