@@ -123,9 +123,11 @@ class AccountInfo(BaseModel):
 
     id: uuid.UUID
     email: str
+    username: str | None = None
     display_name: str
     created_at: datetime
     last_login_at: datetime | None = None
+    is_admin: bool = False
 
 
 class VisitorSnapshot(BaseModel):

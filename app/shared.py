@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import pandas as pd
 import streamlit as st
 
+from cronus.accounts import ensure_admin_account
 from cronus.analytics import filter_current_frame
 from cronus.auth import hash_visitor_key
 from cronus.config import Settings, get_settings
@@ -419,6 +420,38 @@ def configured_admin_password(settings: Settings) -> str | None:
     return None
 
 
+@st.cache_resource(show_spinner=False)
+def ensure_admin_seed() -> AccountInfo | None:
+    """Create or update the seeded administrator once per process.
+
+    Returns None when no admin password is configured. A database failure
+    raises, so Streamlit does not cache it and the next run retries.
+    """
+
+    settings = get_settings()
+    password = configured_admin_password(settings)
+    if password is None:
+        return None
+
+    with session_scope() as session:
+        return ensure_admin_account(
+            session,
+            username=settings.admin_username,
+            email=settings.admin_email,
+            display_name=settings.admin_display_name,
+            password=password,
+        )
+
+
+def seed_admin_account() -> None:
+    """Run the admin seed at startup and keep the app usable on failure."""
+
+    try:
+        ensure_admin_seed()
+    except Exception as exc:
+        logger.warning("Admin seed unavailable: %s", exc)
+
+
 def render_sidebar() -> None:
     st.sidebar.markdown("## Cronus")
     st.sidebar.caption("Telecom churn intelligence")
@@ -457,7 +490,10 @@ def render_sidebar() -> None:
     st.sidebar.divider()
     account = current_account()
     if account is not None:
-        st.sidebar.success(f"Signed in as {account.display_name}")
+        if account.is_admin:
+            st.sidebar.success(f"Administrator: {account.display_name}")
+        else:
+            st.sidebar.success(f"Signed in as {account.display_name}")
         if st.sidebar.button("Sign out", width="stretch", key="account-signout"):
             sign_out_session()
             st.rerun()
@@ -465,7 +501,9 @@ def render_sidebar() -> None:
         st.sidebar.caption("Account: signed out")
 
     st.sidebar.divider()
-    if st.session_state.get("admin_authenticated"):
+    if account is not None and account.is_admin:
+        st.sidebar.success("Admin tools: unlocked")
+    elif st.session_state.get("admin_authenticated"):
         st.sidebar.success("Admin: signed in")
         if st.sidebar.button("Sign out of admin", width="stretch", key="admin-signout"):
             st.session_state.pop("admin_authenticated", None)

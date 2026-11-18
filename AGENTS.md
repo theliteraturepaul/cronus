@@ -15,7 +15,7 @@ Phase status:
 - Phase 1: done.
 - Phase 2: done locally.
 - Phase 3: done locally.
-- Phase 4: done, including accounts and visitor analytics.
+- Phase 4: done, including accounts, the seeded administrator, and visitor analytics.
 - Phase 5: documents done. The deployment is not verified.
 - Phase 6: in progress. All assets are ready. The PBIX is not built.
 - Phase 7: not started.
@@ -41,7 +41,7 @@ Phase 7 acceptance criteria:
 - Phase 1 data platform, schema, validation, ingestion, and upload page. Commit `193ddc0`.
 - Phase 2 exploratory notebook at `Python/analysis.ipynb`.
 - Phase 3 model package under `src/cronus/modeling/` and evidence notebook at `Python/modeling.ipynb`.
-- Phase 4 six-page Streamlit app under `app/`, shared helpers in `app/shared.py`, admin gate in `app/views/admin.py`.
+- Phase 4 seven-page Streamlit app under `app/`, shared helpers in `app/shared.py`, admin gate in `app/views/admin.py`.
 - Phase 4 service layer: `config.admin_password`, `auth.verify_admin_password`, `analytics.py`, `repository.get_current_relationships`, `modeling/serving.py`.
 - Phase 4 tests: `tests/test_auth.py`, `tests/test_analytics.py`, `tests/test_serving.py`, and the extended `tests/test_config.py`.
 - Phase 4 local smoke test: six pages load, admin sign-in works, threshold switch works.
@@ -53,6 +53,13 @@ Phase 7 acceptance criteria:
 - Addendum tests: `tests/test_accounts.py`, `tests/test_visitors.py`, `tests/test_accounts_db.py`, and the extended `tests/test_auth.py` and `tests/test_config.py`. Suite: 147 passed, 9 deselected.
 - Addendum smoke tests: AppTest covers sign-up, sign-out, wrong password, sign-in, and the visitor strip. The strip writes one event on the first run and zero on the next run in the same session.
 - `VISITOR_HASH_SALT` added to the local `.env` and `.env.example`. The value is not committed.
+- Seeded administrator (2026-11-18): migration `0003_admin_account.py` adds `app_users.username` (nullable, unique, lowercase) and `app_users.is_admin`. Applied to Neon.
+- Admin service: `accounts.ensure_admin_account` creates or updates the row, sets `is_admin`, reactivates it, and rotates the hash when the configured password changes. `auth.normalize_identifier` and `auth.normalize_username` back the login.
+- Admin seed: `app/shared.py` `ensure_admin_seed` and `seed_admin_account`, called from `app/main.py` before the gate. Cached once per process. A database failure is logged and does not block the app.
+- One-login flow: `app/views/account.py` accepts an email or username and marks the administrator. `app/views/admin.py` skips the password prompt when `current_account().is_admin`. Viewer accounts keep the prompt.
+- Admin settings: `ADMIN_USERNAME=admin`, `ADMIN_EMAIL=admin@cronus.local`, `ADMIN_DISPLAY_NAME=Administrator`, and `ADMIN_PASSWORD` added to the local `.env` and `.env.example`. `admin_password` in Streamlit secrets keeps priority.
+- Admin tests: `tests/test_accounts_db.py` covers seed creation, idempotence, password rotation, and email promotion. `tests/test_auth.py` covers username and identifier normalisation. Suite: 159 passed, 13 deselected.
+- Admin smoke test: AppTest signs in as `admin`, shows `is_admin`, renders the Admin controls without the password prompt, and still shows `Admin sign-in` for a viewer account.
 - Phase 5 root `README.md` with the public URL and `GitHub/README.md`. Commit `d2ba6ff` is on `origin/main`.
 - Phase 6 model export: `PowerBI/powerbi_model_export.json`. The file moved from the repository root. It matches a fresh fit exactly.
 - Phase 6 Power Query script: `PowerBI/PowerQuery_M_Scoring.txt`. It now contains five queries: Config, ActiveDataset, CurrentRelationships, DateTable, and ScoredRelationships.
@@ -66,8 +73,8 @@ Phase 7 acceptance criteria:
 ### In progress
 
 - Phase 6 PBIX. `PowerBI/project_dashboard.pbix` does not exist. Power BI Desktop does not run in this WSL environment.
-- The accounts and visitor addendum is not committed. `git status` lists the new and changed paths.
-- The deployment is not verified. `origin/main` is `bbf506f`, so the live app does not have the addendum files. The Neon schema is at `0002`, but the deployed app needs `VISITOR_HASH_SALT` in Streamlit secrets.
+- The seeded administrator commit is local and ahead 1. It is not pushed.
+- The deployment is not verified. `origin/main` is `52603f0` and contains the accounts and visitor addendum. The seeded administrator is absent from the remote. The Neon schema is at `0003`, but the deployed app needs `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in Streamlit secrets.
 
 ### Next steps
 
@@ -89,7 +96,7 @@ Phase 7 acceptance criteria:
 
    Require `max_probability_diff <= 1e-6`. Require both flag columns to match.
 
-3. Commit and push in small commits. Do not add a prediction table.
+3. Push the seeded administrator commit. Do not add a prediction table.
 
    ```bash
    cd "/mnt/e/VSCode Workspace/PROJECTS/cronus"
@@ -99,13 +106,11 @@ Phase 7 acceptance criteria:
    uv run ruff format --check .
    uv run mypy src
    uv run pytest -m "not db" -q
-   git add .env.example AGENTS.md README.md GitHub/README.md app src tests alembic
-   git commit -m "feat: add accounts and visitor analytics"
    git push origin main
    ```
 
-   Then set `VISITOR_HASH_SALT` in the Streamlit Cloud secrets and redeploy. The
-   migration already ran against Neon.
+   Then set `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in the Streamlit Cloud
+   secrets and redeploy. Both migrations already ran against Neon.
 
 4. Update README row 6 from "In progress" to "Completed - `PowerBI/project_dashboard.pbix`" after the file exists. Copy the root README to `GitHub/README.md`.
 
@@ -123,12 +128,16 @@ Phase 7 acceptance criteria:
 - Dual grain. The 19.87% rate counts every relationship churn event in the history. The 9.56% rate counts current customers only. Never present one rate as the other.
 - Current-frame contract. Use latest rows only. Never train on historical rows. Never deduplicate current rows.
 - Admin gate fails closed. The gate allows 5 attempts and then locks for 60 seconds. The password is never displayed.
+- Seeded administrator. The user selected one fixed login. `ADMIN_USERNAME` and `ADMIN_PASSWORD` create the account at start-up, so no manual sign-up is needed. The seed is idempotent and rotates the hash when the password changes.
+- One login for the admin. The `is_admin` flag opens the Admin page after the Account page sign-in. Viewer accounts keep the separate Admin password prompt. The user selected this scope.
+- Sign in per session. The user rejected a 30-day token. A full reload needs one sign-in. No session table and no token in the URL.
+- The seed skips the 12-character self-service policy. The operator owns the admin credential. The seed still rejects an empty password.
 - Accounts stay local. No OAuth provider and no email service. Passwords use standard-library scrypt, so the addendum adds no runtime dependency.
 - Every dashboard page requires an account. The user selected this scope. The Account page is the only public page, and the visitor strip stays public.
-- The admin gate stays separate. Admin actions need the account session and the admin password.
+- Viewer accounts need the account session and the admin password for admin actions. The seeded administrator needs only its Account page sign-in.
 - Visitor identity is a salted HMAC of the IP address and user agent. The app stores no raw IP, raw user agent, or cookie. Counts are approximate because NAT can merge visitors and mobile IP changes can split them.
 - The visitor write is throttled in session state to one row per page per 30 minutes. This prevents a row on every Streamlit rerun.
-- No schema change to the churn tables. Migration `0002` adds only `app_users` and `visitor_events`.
+- No schema change to the churn tables. Migration `0002` adds `app_users` and `visitor_events`. Migration `0003` adds `app_users.username` and `app_users.is_admin`.
 - No retune, no `class_weight` change, and no threshold reselection.
 - No new runtime dependency. `scikit-learn` entered in Phase 3.
 - Phase 5 and Phase 6 prompts keep full length. Do not compress them with the `asd-ste100` skill.
@@ -152,7 +161,7 @@ Use these values in the report and in tests.
 ### Files touched
 
 - Configuration and services: `src/cronus/config.py`, `src/cronus/auth.py`, `src/cronus/accounts.py`, `src/cronus/visitors.py`, `src/cronus/analytics.py`, `src/cronus/repository.py`, `src/cronus/modeling/`.
-- Data contracts and schema: `src/cronus/models.py`, `src/cronus/schemas.py`, `alembic/versions/0002_accounts_and_visitors.py`.
+- Data contracts and schema: `src/cronus/models.py`, `src/cronus/schemas.py`, `alembic/versions/0002_accounts_and_visitors.py`, `alembic/versions/0003_admin_account.py`.
 - Application: `app/main.py`, `app/shared.py`, `app/views/`.
 - Tests: `tests/test_auth.py`, `tests/test_accounts.py`, `tests/test_visitors.py`, `tests/test_accounts_db.py`, `tests/test_analytics.py`, `tests/test_serving.py`, `tests/test_modeling.py`, `tests/test_config.py`, `tests/test_powerbi_export.py`.
 - Notebooks: `Python/analysis.ipynb`, `Python/modeling.ipynb`.
@@ -165,18 +174,20 @@ Use these values in the report and in tests.
 - PBIX absent. Power BI Desktop does not run in this WSL environment. Build the file on Windows.
 - Windows-only build. The guide assumes Power BI Desktop and the built-in PostgreSQL connector.
 - Parity scope. The PBIX uses fixed coefficients. Streamlit refits. Parity holds for the baseline active dataset. Regenerate `powerbi_model_export.json` before a comparison on a new dataset.
-- Repository gap. `origin/main` is `bbf506f`. The accounts and visitor addendum is uncommitted. The live app cannot show the new pages until you push those files and redeploy.
-- Deployment. The public Streamlit URL is not verified against the current remote tree. Set `VISITOR_HASH_SALT` in the Streamlit Cloud secrets.
-- DB tests. `TEST_DATABASE_URL` is not set. 9 tests are deselected.
+- Repository gap. `origin/main` is `52603f0`. The seeded administrator commit is local and ahead 1. The live app has the account and visitor files but not the seeded administrator. Push and redeploy.
+- Deployment. The public Streamlit URL is not verified against the current remote tree. Set `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in the Streamlit Cloud secrets.
+- DB tests. `TEST_DATABASE_URL` is not set. 13 tests are deselected.
 - AppTest limitation. `AppTest.switch_page` does not resolve callable `st.Page` objects. Test each page with `AppTest.from_string`. The sign-in gate and account flow work under `AppTest.from_file("app/main.py")`.
 - Session limit. `st.session_state` is not persistent. A full browser reload starts a new Streamlit session, so the viewer signs in again. The app stores no session cookie.
+- Admin seed. The seed runs once per Streamlit process. A password change needs a restart. A database outage at start-up skips the seed until the next run.
+- Admin username. A change to `ADMIN_USERNAME` creates a new account. The old row stays and keeps `is_admin`.
 - Account scope. Sign-up is open and no verification email is sent. The gate demonstrates authentication and does not protect sensitive data. Set `ALLOW_SIGNUP=false` after you create the needed accounts.
 - Visitor accuracy. Counts are approximate. NAT can merge two people into one visitor, and a mobile IP change can split one person into two.
 - Visitor salt. A blank `VISITOR_HASH_SALT` stops recording. The banner shows stored counts with a configuration caption.
 - Documentation drift. Refresh `GitHub/README.md` after each root README change. README row 6 stays "In progress" until the PBIX exists.
 - PDF. `01_Project_Documentation.pdf` does not exist.
 - Build tool scope. `PowerBI/verify_scores.py` uses a `__main__` guard. It is a build-time check, not an application entry point. The Streamlit app has no CLI. The file carries `# ruff: noqa: E402` for its `src/` path bootstrap.
-- Secrets. `.env` exists and contains `VISITOR_HASH_SALT`. `.streamlit/secrets.toml` does not exist. The admin gate fails closed. Never print or commit `.env`.
+- Secrets. `.env` exists and contains `ADMIN_PASSWORD` and `VISITOR_HASH_SALT`. `.streamlit/secrets.toml` does not exist. The admin gate fails closed. Never print or commit `.env`.
 
 ### Commands to verify
 
@@ -195,9 +206,9 @@ uv run streamlit run app/main.py
 Expected results:
 
 - `ruff` and `mypy` report no issues.
-- `pytest` reports 147 passed and 9 deselected.
-- `alembic` reports `0002 (head)` and applies no new step.
-- Streamlit starts on the Account page. Create an account, and seven pages appear.
+- `pytest` reports 159 passed and 13 deselected.
+- `alembic` reports `0003 (head)` and applies no new step.
+- Streamlit starts on the Account page. Sign in with `admin` and `ADMIN_PASSWORD`, and seven pages appear. The Admin page opens without a password prompt.
 
 Run the DB tests only when a separate test database exists:
 
@@ -205,7 +216,7 @@ Run the DB tests only when a separate test database exists:
 uv run pytest -m db -q
 ```
 
-Expected: 9 passed. The five account and visitor tests join the four ingestion tests.
+Expected: 13 passed. The nine account, admin, and visitor tests join the four ingestion tests.
 
 Run the Power BI parity test without a database:
 

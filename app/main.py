@@ -8,6 +8,7 @@ from shared import (
     render_guest_sidebar,
     render_sidebar,
     render_visitor_banner,
+    seed_admin_account,
     show_flash,
 )
 from views import account as account_view
@@ -32,6 +33,7 @@ except Exception:
     st.stop()
 
 configure_logging(settings.log_level)
+seed_admin_account()
 
 account = current_account()
 show_flash()

@@ -42,7 +42,7 @@ def _record_failure() -> None:
 
     st.session_state["account_failed_attempts"] = attempts
     st.error(
-        "Email or password is incorrect. "
+        "Email, username, or password is incorrect. "
         f"{MAX_ATTEMPTS - attempts} attempt(s) remain before a temporary lock."
     )
 
@@ -55,10 +55,10 @@ def _render_sign_in() -> None:
         return
 
     with st.form("account-signin", clear_on_submit=False):
-        email = st.text_input(
-            "Email",
-            key="account-signin-email",
-            placeholder="you@example.com",
+        identifier = st.text_input(
+            "Email or username",
+            key="account-signin-identifier",
+            placeholder="you@example.com or admin",
         )
         password = st.text_input(
             "Password",
@@ -69,13 +69,13 @@ def _render_sign_in() -> None:
 
     if not submitted:
         return
-    if not email.strip() or not password:
-        st.error("Enter your email and password.")
+    if not identifier.strip() or not password:
+        st.error("Enter your email or username, and your password.")
         return
 
     try:
         with session_scope() as session:
-            account = authenticate(session, email=email, password=password)
+            account = authenticate(session, identifier=identifier, password=password)
     except Exception as exc:
         show_db_failure("sign in", exc)
         return
@@ -149,6 +149,10 @@ def _render_create() -> None:
 
 def _render_signed_in(account: AccountInfo) -> None:
     st.success(f"Signed in as {account.display_name}.")
+    if account.is_admin:
+        st.info("Administrator account. The Admin page opens without a second password.")
+    if account.username is not None:
+        st.markdown(f"**Username:** `{account.username}`")
     st.markdown(f"**Email:** {account.email}")
     st.markdown(f"**Member since:** {account.created_at:%d %b %Y}")
 
@@ -165,7 +169,7 @@ def _render_signed_in(account: AccountInfo) -> None:
 
 def render() -> None:
     st.title("Account")
-    st.caption("Sign in to open the Cronus dashboard. Accounts are local to this application.")
+    st.caption("Sign in with your email or username. Accounts are local to this application.")
 
     if st.session_state.pop("account_expired", False):
         st.warning("Your session expired. Sign in again.")

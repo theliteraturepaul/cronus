@@ -19,6 +19,7 @@ from cronus.accounts import (
     authenticate,
     count_accounts,
     create_account,
+    ensure_admin_account,
     find_account_by_email,
 )
 from cronus.config import get_settings, normalize_postgres_url
@@ -76,18 +77,20 @@ def test_create_authenticate_and_count(
         )
     assert created.email == "paul@example.com"
     assert created.display_name == "Paul"
+    assert created.username is None
+    assert created.is_admin is False
 
     with session_factory() as session:
         found = find_account_by_email(session, "PAUL@example.com")
         assert found is not None
         assert found.id == created.id
 
-        signed_in = authenticate(session, email="paul@example.com", password=PASSWORD)
+        signed_in = authenticate(session, identifier="paul@example.com", password=PASSWORD)
         assert signed_in is not None
         assert signed_in.last_login_at is not None
 
-        assert authenticate(session, email="paul@example.com", password="wrong") is None
-        assert authenticate(session, email="nobody@example.com", password=PASSWORD) is None
+        assert authenticate(session, identifier="paul@example.com", password="wrong") is None
+        assert authenticate(session, identifier="nobody@example.com", password=PASSWORD) is None
         assert count_accounts(session) == 1
 
 
@@ -128,7 +131,7 @@ def test_inactive_account_is_hidden_and_cannot_authenticate(
 
     with session_factory() as session:
         assert find_account_by_email(session, "paul@example.com") is None
-        assert authenticate(session, email="paul@example.com", password=PASSWORD) is None
+        assert authenticate(session, identifier="paul@example.com", password=PASSWORD) is None
         assert count_accounts(session) == 0
 
 
@@ -209,3 +212,129 @@ def test_visitor_snapshot_separates_all_time_and_seven_days(
     assert snapshot.unique_7d == 1
     assert snapshot.page_views_7d == 2
     assert snapshot.account_count == 1
+
+
+ADMIN_PASSWORD = "admin-correct-horse-battery"
+
+
+def test_ensure_admin_account_creates_an_admin(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        created = ensure_admin_account(
+            session,
+            username="  ADMIN ",
+            email=" Admin@Cronus.local ",
+            display_name=" Administrator ",
+            password=ADMIN_PASSWORD,
+        )
+
+    assert created.username == "admin"
+    assert created.email == "admin@cronus.local"
+    assert created.display_name == "Administrator"
+    assert created.is_admin is True
+
+    with session_factory() as session:
+        signed_in = authenticate(session, identifier="admin", password=ADMIN_PASSWORD)
+        assert signed_in is not None
+        assert signed_in.id == created.id
+        assert signed_in.is_admin is True
+
+
+def test_ensure_admin_account_is_idempotent(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        first = ensure_admin_account(
+            session,
+            username="admin",
+            email="admin@cronus.local",
+            display_name="Administrator",
+            password=ADMIN_PASSWORD,
+        )
+
+    with session_factory() as session:
+        second = ensure_admin_account(
+            session,
+            username="admin",
+            email="admin@cronus.local",
+            display_name="Administrator",
+            password=ADMIN_PASSWORD,
+        )
+        assert count_accounts(session) == 1
+
+    assert second.id == first.id
+
+
+def test_ensure_admin_account_updates_the_password(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        first = ensure_admin_account(
+            session,
+            username="admin",
+            email="admin@cronus.local",
+            display_name="Administrator",
+            password="old-admin-password-123",
+        )
+
+    with session_factory() as session:
+        second = ensure_admin_account(
+            session,
+            username="admin",
+            email="admin@cronus.local",
+            display_name="Administrator",
+            password="new-admin-password-456",
+        )
+
+    assert second.id == first.id
+
+    with session_factory() as session:
+        assert (
+            authenticate(
+                session,
+                identifier="admin",
+                password="new-admin-password-456",
+            )
+            is not None
+        )
+        assert (
+            authenticate(
+                session,
+                identifier="admin",
+                password="old-admin-password-123",
+            )
+            is None
+        )
+
+
+def test_ensure_admin_account_promotes_an_existing_email(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        viewer = create_account(
+            session,
+            email="admin@cronus.local",
+            display_name="Some Viewer",
+            password=PASSWORD,
+        )
+
+    with session_factory() as session:
+        seeded = ensure_admin_account(
+            session,
+            username="admin",
+            email="admin@cronus.local",
+            display_name="Administrator",
+            password=ADMIN_PASSWORD,
+        )
+
+    assert seeded.id == viewer.id
+    assert seeded.is_admin is True
+    assert seeded.username == "admin"
+
+    with session_factory() as session:
+        signed_in = authenticate(session, identifier="ADMIN", password=ADMIN_PASSWORD)
+        assert signed_in is not None
+        assert signed_in.id == viewer.id
+        assert signed_in.is_admin is True
+        assert count_accounts(session) == 1

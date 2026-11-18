@@ -21,11 +21,14 @@ import secrets
 from functools import lru_cache
 
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_USERNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{2,39}$")
 
 _PASSWORD_MIN_LENGTH = 12
 _PASSWORD_MAX_LENGTH = 128
 _DISPLAY_NAME_MIN_LENGTH = 2
 _DISPLAY_NAME_MAX_LENGTH = 80
+_USERNAME_MIN_LENGTH = 3
+_USERNAME_MAX_LENGTH = 40
 
 _SCRYPT_N = 2**14
 _SCRYPT_R = 8
@@ -76,6 +79,37 @@ def is_valid_email(value: str) -> bool:
     if not candidate or len(candidate) > 254:
         return False
     return _EMAIL_PATTERN.fullmatch(candidate) is not None
+
+
+def normalize_identifier(value: str) -> str:
+    """Return a trimmed, case-folded sign-in name.
+
+    The value may be an email address or a username.
+    """
+
+    candidate = value.strip().casefold()
+    if not candidate:
+        raise ValueError("Enter an email or username.")
+    if len(candidate) > 254:
+        raise ValueError("The sign-in name is too long.")
+    return candidate
+
+
+def normalize_username(value: str) -> str:
+    """Return a trimmed, case-folded username, or raise :class:`ValueError`.
+
+    Users type the username. The stored form is always lowercase.
+    """
+
+    candidate = value.strip().casefold()
+    if not (_USERNAME_MIN_LENGTH <= len(candidate) <= _USERNAME_MAX_LENGTH):
+        raise ValueError("The username must be 3 to 40 characters.")
+    if not _USERNAME_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "Use lowercase letters, digits, dots, hyphens, or underscores. "
+            "Start with a letter or digit."
+        )
+    return candidate
 
 
 def validate_display_name(value: str) -> str:

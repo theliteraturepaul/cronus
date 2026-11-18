@@ -9,6 +9,8 @@ from cronus.auth import (
     hash_visitor_key,
     is_valid_email,
     normalize_email,
+    normalize_identifier,
+    normalize_username,
     validate_display_name,
     validate_password,
     verify_admin_password,
@@ -56,6 +58,37 @@ def test_normalize_email_trims_and_casefolds() -> None:
 def test_normalize_email_rejects_blank() -> None:
     with pytest.raises(ValueError, match="email"):
         normalize_email("   ")
+
+
+def test_normalize_identifier_trims_and_casefolds() -> None:
+    assert normalize_identifier("  Admin ") == "admin"
+    assert normalize_identifier("  Paul@Example.COM ") == "paul@example.com"
+
+
+def test_normalize_identifier_rejects_blank() -> None:
+    with pytest.raises(ValueError, match="username"):
+        normalize_identifier("   ")
+
+
+def test_normalize_username_trims_and_casefolds() -> None:
+    assert normalize_username("  Admin.User-1 ") == "admin.user-1"
+
+
+@pytest.mark.parametrize(
+    "username",
+    [
+        "ab",
+        "a" * 41,
+        "-admin",
+        ".admin",
+        "admin user",
+        "admin@example.com",
+        "admin!",
+    ],
+)
+def test_normalize_username_rejects_invalid_values(username: str) -> None:
+    with pytest.raises(ValueError):
+        normalize_username(username)
 
 
 @pytest.mark.parametrize(

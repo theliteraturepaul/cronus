@@ -253,7 +253,16 @@ class AppUser(Base):
     __tablename__ = "app_users"
     __table_args__ = (
         UniqueConstraint("email", name="uq_app_users_email"),
+        UniqueConstraint("username", name="uq_app_users_username"),
         CheckConstraint("email = lower(email)", name="email_lowercase"),
+        CheckConstraint(
+            "username IS NULL OR username = lower(username)",
+            name="username_lowercase",
+        ),
+        CheckConstraint(
+            "username IS NULL OR char_length(username) BETWEEN 3 AND 40",
+            name="username_length",
+        ),
         Index("ix_app_users_created_at", "created_at"),
         {
             "comment": (
@@ -270,8 +279,20 @@ class AppUser(Base):
         server_default=text("gen_random_uuid()"),
     )
     email: Mapped[str] = mapped_column(Text, nullable=False)
+    username: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional lowercase sign-in name for a seeded account.",
+    )
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="True only for the seeded administrator account.",
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

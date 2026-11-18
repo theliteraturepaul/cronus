@@ -141,6 +141,26 @@ def test_account_settings_defaults() -> None:
     assert settings.session_max_hours == 12
 
 
+def test_admin_settings_defaults() -> None:
+    settings = Settings(_env_file=None, database_url="postgresql://u:p@host/db")
+    assert settings.admin_username == "admin"
+    assert settings.admin_email == "admin@cronus.local"
+    assert settings.admin_display_name == "Administrator"
+
+
+def test_admin_settings_are_stripped() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://u:p@host/db",
+        admin_username="  root  ",
+        admin_email="  root@example.com  ",
+        admin_display_name="  Root  ",
+    )
+    assert settings.admin_username == "root"
+    assert settings.admin_email == "root@example.com"
+    assert settings.admin_display_name == "Root"
+
+
 def test_session_max_hours_must_be_positive() -> None:
     with pytest.raises(ValidationError):
         Settings(

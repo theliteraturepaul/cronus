@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(default=25, gt=0)
     max_upload_rows: int = Field(default=200_000, gt=0)
     admin_password: SecretStr | None = None
+    admin_username: str = "admin"
+    admin_email: str = "admin@cronus.local"
+    admin_display_name: str = "Administrator"
     visitor_hash_salt: SecretStr | None = None
     allow_signup: bool = True
     session_max_hours: int = Field(default=12, gt=0)
@@ -102,6 +105,13 @@ class Settings(BaseSettings):
             return value if value.get_secret_value().strip() else None
         if isinstance(value, str):
             return value if value.strip() else None
+        return value
+
+    @field_validator("admin_username", "admin_email", "admin_display_name", mode="before")
+    @classmethod
+    def _normalise_admin_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
         return value
 
     @field_validator("log_level")

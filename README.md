@@ -60,22 +60,25 @@ Phase 3 — current-relationship churn model — is implemented and verified:
 Phase 4 — analytics UI and admin workflow — is implemented:
 
 - Multipage Streamlit application under `app/` with Overview, Providers and
-  segments, Usage and tenure, Model performance, Churn predictions, and Admin
-  pages
+  segments, Usage and tenure, Model performance, Churn predictions, Admin, and
+  Account pages
 - Current-relationship reads only: analytics and scoring never use historical
   rows and never deduplicate the current grain
 - The fixed Phase 3 logistic model is refitted on the active current frame and
   cached in the Streamlit process with `st.cache_resource`
 - Every score display and CSV export carries its decision threshold
-- Admin password gate protects upload, replacement, and activation, and fails
-  closed when no password is configured
+- A seeded administrator account and a password gate protect upload,
+  replacement, and activation, and the gate fails closed when no password is
+  configured
 - No model artifact, prediction table, or new runtime dependency
 
 Phase 4 addendum (2026-11-18): the app now has local email/password accounts and
 site-wide visitor analytics. Every dashboard page requires a signed-in account,
-and the Admin page keeps its separate password gate. The visitor strip shows
-unique visitors, seven-day visitors, seven-day page views, and account count.
-Migration `0002` adds `app_users` and `visitor_events`.
+and the Admin page keeps its separate password gate for viewer accounts. The
+visitor strip shows unique visitors, seven-day visitors, seven-day page views,
+and account count. Migration `0002` adds `app_users` and `visitor_events`.
+Migration `0003` adds the seeded administrator username and role flag, so one
+fixed login opens the dashboard and the Admin page.
 
 Phase 5 is complete. Phase 6 is in progress: the Power Query scoring, the DAX
 objects, and the build guide are ready, and the PBIX build is pending. Phase 7
@@ -95,10 +98,11 @@ flowchart LR
 ```
 
 - The Streamlit application is the only data-loading interface and the only
-  application interface. There is no custom CLI, seed script, or console entry
-  point.
-- The app has six pages. The Admin page is the only place that uploads,
-  replaces, or activates a dataset, and it requires a password.
+  application interface. There is no custom CLI or console entry point. The
+  administrator account is seeded at application start-up.
+- The app has seven pages. The Admin page is the only place that uploads,
+  replaces, or activates a dataset, and it requires the seeded administrator
+  account or the admin password.
 - The Phase 2 and Phase 3 notebooks read the canonical CSV through the
   validation service. They do not connect to Neon.
 - Alembic is the only command-line tool used to change the database schema.
@@ -146,7 +150,7 @@ flowchart LR
 │       ├── performance.py         # Phase 3 model card and checks
 │       ├── predictions.py         # scored review queue and CSV export
 │       ├── account.py             # sign-up, sign-in, session, and sign-out
-│       └── admin.py               # password gate, upload, activation
+│       └── admin.py               # administrator gate, upload, activation
 ├── src/cronus/
 │   ├── __init__.py
 │   ├── accounts.py                # account persistence and authentication
@@ -173,7 +177,8 @@ flowchart LR
 │   ├── script.py.mako
 │   └── versions/
 │       ├── 0001_initial_schema.py
-│       └── 0002_accounts_and_visitors.py
+│       ├── 0002_accounts_and_visitors.py
+│       └── 0003_admin_account.py
 ├── tests/
 │   ├── conftest.py
 │   ├── test_config.py
@@ -223,7 +228,7 @@ copy.
 ```bash
 cp .env.example .env
 # Edit .env and fill DATABASE_URL and DIRECT_URL.
-# Set ADMIN_PASSWORD to a non-empty value for the Admin page.
+# Set ADMIN_PASSWORD to a non-empty value.
 ```
 
 Never commit `.env`. `DATABASE_URL` must be the pooled Neon URL (its host
@@ -232,11 +237,19 @@ Alembic. Connection strings are normalised to
 `postgresql+psycopg://` with `sslmode=require`; passwords are masked in any
 display.
 
-Set the admin password in `.env`:
+Set the seeded administrator account in `.env`:
 
 ```bash
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@cronus.local
+ADMIN_DISPLAY_NAME=Administrator
 ADMIN_PASSWORD=choose-a-long-password
 ```
+
+The app creates or updates this account at start-up. It has no self-service
+sign-up and no separate Admin page password prompt. Use a long password. The
+seed accepts any non-empty value because the operator owns this credential. The
+repository never contains the value.
 
 The app also accepts a Streamlit secret. Create `.streamlit/secrets.toml`
 (gitignored) when you prefer that route:
@@ -246,8 +259,8 @@ admin_password = "choose-a-long-password"
 ```
 
 The Streamlit secret has priority over `ADMIN_PASSWORD`. If neither value is
-set, the Admin page stays locked and upload, replacement, and activation are
-unavailable.
+set, the seed is skipped and the Admin page stays locked. Upload, replacement,
+and activation are then unavailable.
 
 Set the visitor hash salt in `.env`:
 
@@ -275,15 +288,16 @@ The migration creates the `datasets`, `customer_relationships`, `app_users`, and
 uv run streamlit run app/main.py
 ```
 
-Open the local Streamlit URL. The first page is **Account**. Create an account,
-and the six dashboard pages appear in the sidebar. To load the baseline
-snapshot, open **Admin**, enter the admin password, upload
+Open the local Streamlit URL. The first page is **Account**. Sign in with
+`admin` and the `ADMIN_PASSWORD` value. The seven sidebar pages appear. A new
+viewer can use the **Create account** tab instead, and the admin account then
+opens every page. To load the baseline snapshot, open **Admin**, upload
 `Dataset/project_dataset.csv`, give the dataset a name, keep **Activate after
 load** checked, and click **Load dataset**.
 
 The app builds the model when you first open **Churn predictions**. The fit runs
 in the Streamlit process on the active current-relationship frame. No model file
-is written. The six pages are:
+is written. The pages are:
 
 1. **Overview** — active snapshot and dual-grain churn
 2. **Providers and segments** — provider, gender, age-band, and state tables
@@ -293,7 +307,9 @@ is written. The six pages are:
    matrix, calibration, subgroup recall, and temporal check
 5. **Churn predictions** — scored review queue with filtered and full CSV
    downloads
-6. **Admin** — password gate, upload, replacement, and activation
+6. **Admin** — administrator account or password gate, upload, replacement, and
+   activation
+7. **Account** — sign-up, sign-in, session details, and sign-out
 
 ### 5. Run the analysis notebook
 
@@ -359,7 +375,10 @@ Database tests refuse to run when `TEST_DATABASE_URL` equals `DATABASE_URL`.
 | `TEST_DATABASE_URL` | no | — | Separate database/branch for `-m db` tests |
 | `APP_ENV` | no | `development` | `development`, `test`, or `production` |
 | `LOG_LEVEL` | no | `INFO` | Python logging level |
-| `ADMIN_PASSWORD` | no | — | Admin gate for upload, replacement, and activation. Blank keeps the gate locked |
+| `ADMIN_USERNAME` | no | `admin` | Seeded administrator sign-in name |
+| `ADMIN_EMAIL` | no | `admin@cronus.local` | Seeded administrator email address |
+| `ADMIN_DISPLAY_NAME` | no | `Administrator` | Seeded administrator display name |
+| `ADMIN_PASSWORD` | no | — | Seed password and Admin page gate. Blank skips the seed and keeps the gate locked |
 | `VISITOR_HASH_SALT` | no | — | Secret salt for the anonymous visitor HMAC. Blank disables visitor recording |
 | `ALLOW_SIGNUP` | no | `true` | Show the create-account form on the Account page |
 | `SESSION_MAX_HOURS` | no | `12` | Signed-in session lifetime in hours |
@@ -396,16 +415,19 @@ database read fails.
 - **Churn predictions**: a ranked review queue for the active current frame.
   The page offers the two fixed Phase 3 policies. Every metric label, table
   column, filename, and CSV export carries the selected threshold.
-- **Admin**: password gate, upload, replacement, and activation. The gate
+- **Admin**: administrator account or password gate, upload, replacement, and
+  activation. The seeded `is_admin` account opens the tools after its Account
+  page sign-in. A viewer account uses the separate password gate. The gate
   resolves `st.secrets["admin_password"]` first, then `Settings.admin_password`
   from `ADMIN_PASSWORD`. When both are blank, the page fails closed.
-- **Account**: create an account, sign in, and sign out. The page shows the
-  display name, email address, and member-since date. Sign-in locks for 60
-  seconds after five failed attempts in one session.
+- **Account**: create an account, sign in with an email or username, and sign
+  out. The page shows the display name, username, email address, and
+  member-since date. An administrator badge marks the seeded account. Sign-in
+  locks for 60 seconds after five failed attempts in one session.
 
-Every page except Account requires a signed-in account. The Admin page keeps
-its separate password gate, so admin actions need both the account session and
-the admin password.
+Every page except Account requires a signed-in account. Admin actions need the
+administrator account or a viewer session that passed the separate password
+gate.
 
 Cached reads have a 60-second TTL. The sidebar **Refresh data** button clears
 both the data cache and the fitted-model cache. Uploads and activations also
@@ -607,16 +629,19 @@ observed `churn` target.
 
 The Admin page is the only page with write controls.
 
-1. Resolve the admin password from `st.secrets["admin_password"]`, then from
-   `ADMIN_PASSWORD` through `Settings`.
-2. Fail closed when both values are missing or blank.
-3. Compare the candidate with `hmac.compare_digest`.
-4. Lock the form for 60 seconds after five failed attempts in one session.
-5. Show upload, replacement, and activation controls only after sign-in.
+1. When the signed-in account has `is_admin`, open the controls directly. The
+   account already passed its password check on the Account page.
+2. Otherwise, resolve the admin password from `st.secrets["admin_password"]`,
+   then from `ADMIN_PASSWORD` through `Settings`.
+3. Fail closed when both values are missing or blank.
+4. Compare the candidate with `hmac.compare_digest`.
+5. Lock the form for 60 seconds after five failed attempts in one session.
+6. Show upload, replacement, and activation controls only after one of the two
+   checks passes.
 
 The password is never displayed, logged, stored in the database, or written to
 an export. Sign-in lasts for the Streamlit browser session. The sidebar shows
-the lock state and provides sign-out.
+the lock or administrator state and provides sign-out.
 
 Uploads run the existing validation and ingestion services. Validation errors
 leave the database unchanged. A byte-identical file offers activation of the
@@ -625,10 +650,12 @@ successful upload or activation clears the data and model caches.
 
 ## Accounts and visitor analytics
 
-Migration `0002_accounts_and_visitors.py` adds two tables.
+Migration `0002_accounts_and_visitors.py` adds two tables, and migration
+`0003_admin_account.py` extends `app_users`.
 
-- `app_users` stores one row per account: case-folded unique email, display
-  name, scrypt password hash, active flag, created date, and last sign-in date.
+- `app_users` stores one row per account: case-folded unique email, optional
+  unique lowercase username, display name, scrypt password hash, admin flag,
+  active flag, created date, and last sign-in date.
 - `visitor_events` stores one row per throttled page view: a 32-character
   visitor digest, the Streamlit session id, an optional account id, the page
   path, and the timestamp.
@@ -644,6 +671,29 @@ parameters in `scrypt$n$r$p$salt$hash` form, so a future parameter change needs
 no schema change. Verification uses `hmac.compare_digest`. An unknown email
 still runs one hash against a dummy value, so a failed lookup takes the same
 time as a wrong password.
+
+### Seeded administrator
+
+Migration `0003` adds `username` and `is_admin` to `app_users`. At start-up,
+`app/main.py` calls `seed_admin_account()`, which runs once per process through
+`st.cache_resource`. The seed reads `ADMIN_USERNAME`, `ADMIN_EMAIL`,
+`ADMIN_DISPLAY_NAME`, and the password that `configured_admin_password()`
+resolves.
+
+- When no account matches the username or email, the seed creates one with
+  `is_admin=true`.
+- When the account exists, the seed sets `is_admin=true`, reactivates it, and
+  updates the hash when the configured password changed.
+- The seed catches database errors and logs them. The app still opens.
+- The seed skips the 12-character self-service policy because the operator owns
+  this credential. Use a long value anyway.
+
+Sign-in accepts a username or an email. One password does two jobs for the
+seeded account: the Account page sign-in and the Admin page gate. A viewer
+account still uses the separate Admin page password. Change `ADMIN_PASSWORD` or
+the `admin_password` secret and restart the process to rotate the password. The
+username is a sign-in name only. A change to `ADMIN_USERNAME` creates a new
+account and leaves the old row in place.
 
 The signed-in session lives in `st.session_state` and ends after
 `SESSION_MAX_HOURS`, or when the browser opens a new Streamlit session. Sign-out
@@ -817,15 +867,16 @@ The app calls this service; no SQL lives in `app/`.
 The unit suite covers the baseline metrics, relationship derivation, error and
 warning rules, URL normalisation, password masking, upload limits, admin
 password verification, scrypt hashing, account policy, visitor-key hashing,
-the page-view throttle, current-frame analytics, and the serving contract. The
-analytics tests check Wilson intervals, segment coverage, ordered bands, usage
-quartiles, cohorts, filters, and rejection of historical or duplicate current
-rows. The serving tests check the fixed constants, model fit on the full current
-frame, score coverage, threshold flags, review-priority bands, summary counts,
-and input immutability. DB tests create the schema in the test database, ingest
-the baseline, verify dual-grain metrics, duplicate rejection, replacement, and
-activation, then drop their tables. The account DB tests also create and
-authenticate accounts, reject duplicate emails, set `last_login_at`, and check
+the page-view throttle, username normalisation, current-frame analytics, and the
+serving contract. The analytics tests check Wilson intervals, segment coverage,
+ordered bands, usage quartiles, cohorts, filters, and rejection of historical or
+duplicate current rows. The serving tests check the fixed constants, model fit
+on the full current frame, score coverage, threshold flags, review-priority
+bands, summary counts, and input immutability. DB tests create the schema in the
+test database, ingest the baseline, verify dual-grain metrics, duplicate
+rejection, replacement, and activation, then drop their tables. The account DB
+tests also create and authenticate accounts, reject duplicate emails, set
+`last_login_at`, seed the administrator account, update its password, and check
 visitor distinct counts. They are excluded from CI.
 
 The Phase 2 notebook verifies the snapshot before analysis. It asserts the file
@@ -851,9 +902,10 @@ counts, 10 figures, no error output, and no stderr output.
 | 7 | Final documentation and submission README | `01_Project_Documentation.pdf`, `GitHub/README.md` |
 
 Phase 4 addendum (2026-11-18): account sign-up and sign-in plus site-wide
-visitor analytics. Migration `0002` adds the two tables. The deployment needs
-`VISITOR_HASH_SALT` and a completed `alembic upgrade head` before the new pages
-work.
+visitor analytics. Migration `0002` adds the two tables. Migration `0003` adds
+the seeded administrator username and role flag. The deployment needs
+`ADMIN_PASSWORD`, `VISITOR_HASH_SALT`, and a completed `alembic upgrade head`
+before the new pages and the fixed admin login work.
 
 ## Instructor submission mapping
 
@@ -943,8 +995,10 @@ is gitignored. The project rule bans prediction tables.
 - Account passwords use scrypt with a random 16-byte salt and
   `hmac.compare_digest`. No plaintext or reversible value is stored.
 - Every dashboard page requires an active account session.
-- Upload, replacement, and activation require the admin password.
+- Upload, replacement, and activation require the administrator account or the
+  admin password.
 - The admin password is compared with `hmac.compare_digest` and never displayed.
+  The seeded hash is stored in `app_users`, never in the repository.
 - Visitor keys are truncated HMAC-SHA256 digests. The application stores no raw
   IP address, raw user agent, or cookie value.
 - `VISITOR_HASH_SALT` is a secret. Keep it out of the repository and rotate it
@@ -955,7 +1009,11 @@ is gitignored. The project rule bans prediction tables.
 ## Known limitations
 
 - The upload panel remains local to the Streamlit process. The Admin page
-  requires a configured password and fails closed when none is set.
+  requires a configured admin password or the seeded administrator account, and
+  it fails closed when no password is set.
+- The admin seed runs once per Streamlit process. A password change needs a
+  restart, and a database outage at start-up skips the seed until the next run.
+- A change to `ADMIN_USERNAME` creates a new account. The old row stays.
 - Account sign-up is open and no verification email is sent. The gate
   demonstrates authentication and does not protect sensitive data.
 - A full browser reload creates a new Streamlit session, so the viewer must sign

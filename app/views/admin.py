@@ -13,6 +13,7 @@ from shared import (
     active_summary_state,
     clear_caches,
     configured_admin_password,
+    current_account,
     load_datasets,
     page_header,
     render_profile,
@@ -363,12 +364,22 @@ def render() -> None:
         )
         return
 
-    if not st.session_state.get("admin_authenticated"):
-        _render_login(expected)
-        return
+    account = current_account()
+    if account is not None and account.is_admin:
+        st.success(f"Admin tools unlocked by the administrator account {account.display_name!r}.")
+        st.caption(
+            "The seeded account passed its password check on the Account page. "
+            "Sign-out is in the sidebar."
+        )
+    else:
+        if not st.session_state.get("admin_authenticated"):
+            _render_login(expected)
+            return
 
-    st.success("Admin signed in for this browser session.")
-    st.caption("The password is never displayed, logged, or exported. Sign-out is in the sidebar.")
+        st.success("Admin signed in for this browser session.")
+        st.caption(
+            "The password is never displayed, logged, or exported. Sign-out is in the sidebar."
+        )
 
     if summary is None:
         st.info(
