@@ -87,8 +87,9 @@ activate one. Each analysis page links its charts to the matching notebook in a
 static chart gallery under `app/assets/`.
 
 Phase 5 is complete. Phase 6 is in progress: the Power Query scoring, the DAX
-objects, and the build guide are ready, and the PBIX build is pending. Phase 7
-is not started.
+objects, the build guide, and `PowerBI/project_dashboard.pbix` are present. The
+Power BI Desktop check and the parity export check are pending. Phase 7 is not
+started.
 
 ## Architecture
 
@@ -933,7 +934,7 @@ counts, 10 figures, no error output, and no stderr output.
 | 3 | Current-relationship churn model and evaluation | Completed — `src/cronus/modeling/` and `Python/modeling.ipynb` |
 | 4 | Full analytics UI and admin-gated upload workflow | Completed — `app/` multipage Streamlit application |
 | 5 | Deployment and public Streamlit URL | Completed — https://churn-lab.streamlit.app/ (account sign-in required) |
-| 6 | Power BI dashboard in Import mode | In progress — scoring queries, DAX, and build guide are ready; `project_dashboard.pbix` is pending a Windows build |
+| 6 | Power BI dashboard in Import mode | In progress — `PowerBI/project_dashboard.pbix` is present with five pages; desktop verification is pending |
 | 7 | Final documentation and submission README | `01_Project_Documentation.pdf`, `GitHub/README.md` |
 
 Phase 4 addendum (2026-11-18): account sign-up and sign-in plus site-wide
@@ -976,7 +977,7 @@ and does not call Python at view time.
 | `PowerBI/PBIX_Build_Guide.md` | Step-by-step build guide for the five report pages |
 | `PowerBI/powerbi_model_export.json` | Model parameters (intercept, 43 coefficients, scaler, categories) |
 | `PowerBI/verify_scores.py` | Build-time parity check against the Streamlit scores |
-| `PowerBI/project_dashboard.pbix` | Output. The build is pending on Windows Power BI Desktop. |
+| `PowerBI/project_dashboard.pbix` | Five-page report. Desktop verification and the parity check are pending. |
 
 ### Data Model
 - `Config` — one record of fixed parameters. Load is disabled.
@@ -1079,5 +1080,6 @@ is gitignored. The project rule bans prediction tables.
   refits on the active frame, so the two paths match only for the baseline
   snapshot that produced `powerbi_model_export.json`. Regenerate the export
   before you compare scores on a different dataset.
-- `PowerBI/project_dashboard.pbix` is not built yet. Power BI Desktop runs on
-  Windows, and this repository was prepared on Linux.
+- `PowerBI/project_dashboard.pbix` is present at the expected path. Power BI
+  Desktop and the parity export check are still pending. This repository was
+  prepared on Linux.

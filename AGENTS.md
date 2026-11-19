@@ -81,13 +81,13 @@ Phase 7 acceptance criteria:
 
 ### In progress
 
-- Phase 6 PBIX. An untracked `project_dashboard.pbix` sits at the repository root (706 KB, modified 2026-11-19). It contains a `DataModel` and a PBIR report definition. It is not verified in Power BI Desktop and it is not at `PowerBI/project_dashboard.pbix`. Power BI Desktop does not run in this WSL environment.
-- The UI refresh commit at `HEAD` is local and ahead 1. `origin/main` is `455da2e`.
-- The deployment is not verified. The remote tree lacks the UI refresh. The Neon schema is at `0003`. The deployed app needs `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in Streamlit secrets.
+- Phase 6 PBIX. `PowerBI/project_dashboard.pbix` is present (706 KB). It has a `DataModel` and five report pages: Overview, Providers and segments, Usage and tenure, Model performance, and Churn predictions. It is not verified in Power BI Desktop, and the parity export check is pending. Power BI Desktop does not run in this WSL environment.
+- The UI refresh and PBIX commits are local. `origin/main` is `455da2e`. The branch is ahead 2.
+- The deployment is not verified. The remote tree lacks the UI refresh and the PBIX. The Neon schema is at `0003`. The deployed app needs `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in Streamlit secrets.
 
 ### Next steps
 
-1. Verify `project_dashboard.pbix` on Windows Power BI Desktop. Open it, confirm Import mode, the five pages, and both flag counts. Then move it to `PowerBI/project_dashboard.pbix`. Follow `PowerBI/PBIX_Build_Guide.md` if the file is incomplete.
+1. Open `PowerBI/project_dashboard.pbix` on Windows Power BI Desktop. Confirm Import mode, the five pages, and both flag counts. Follow `PowerBI/PBIX_Build_Guide.md` if the file is incomplete.
 
    - Confirm `[Flagged Count Default] = 1,180` and `[Flagged Count Recall70] = 3,286`.
    - Confirm every score display and every export shows its threshold.
@@ -102,7 +102,7 @@ Phase 7 acceptance criteria:
 
    Require `max_probability_diff <= 1e-6`. Require both flag columns to match.
 
-3. Push the UI refresh commit. Do not add a prediction table.
+3. Push both local commits. Do not add a prediction table.
 
    ```bash
    cd "/mnt/e/VSCode Workspace/PROJECTS/cronus"
@@ -179,16 +179,16 @@ Use these values in the report and in tests.
 - UI assets and theme: `.streamlit/config.toml`, `app/assets/analysis/analysis_01.png` to `analysis_12.png`, `app/assets/modeling/modeling_01.png` to `modeling_10.png`.
 - Tests: `tests/test_auth.py`, `tests/test_accounts.py`, `tests/test_visitors.py`, `tests/test_accounts_db.py`, `tests/test_analytics.py`, `tests/test_serving.py`, `tests/test_modeling.py`, `tests/test_config.py`, `tests/test_powerbi_export.py`.
 - Notebooks: `Python/analysis.ipynb`, `Python/modeling.ipynb`.
-- Power BI: `PowerBI/PowerQuery_M_Scoring.txt`, `PowerBI/DAX_Measures.txt`, `PowerBI/PBIX_Build_Guide.md`, `PowerBI/powerbi_model_export.json`, `PowerBI/verify_scores.py`.
+- Power BI: `PowerBI/project_dashboard.pbix`, `PowerBI/PowerQuery_M_Scoring.txt`, `PowerBI/DAX_Measures.txt`, `PowerBI/PBIX_Build_Guide.md`, `PowerBI/powerbi_model_export.json`, `PowerBI/verify_scores.py`.
 - Documentation: `README.md`, `GitHub/README.md`, `AGENTS.md`, `Dataset/README.md`.
 - Build: `pyproject.toml`, `uv.lock`, `.env.example`, `.gitignore`.
 
 ### Known issues
 
-- PBIX status. An untracked `project_dashboard.pbix` sits at the repository root. It is not verified in Power BI Desktop, and it is not at `PowerBI/project_dashboard.pbix`. Power BI Desktop does not run in this WSL environment.
+- PBIX status. `PowerBI/project_dashboard.pbix` is present with five pages and a `DataModel`. It is not verified in Power BI Desktop, and the parity export check is pending. Power BI Desktop does not run in this WSL environment.
 - Theme override limit. Streamlit 1.67 applies its own emotion styles to some widgets. The app CSS covers the page, sidebar, metrics, expanders, inputs, dataframes, and buttons. A forced Light mode on a dark device can leave a few native widgets with dark chrome. System mode is exact because the native palettes follow the device.
 - Static chart drift. `app/assets/` holds PNG files from the notebooks. A notebook figure change needs a new extraction.
-- Repository gap. `origin/main` is `455da2e`. The UI refresh commit at `HEAD` is local. Push and redeploy.
+- Repository gap. `origin/main` is `455da2e`. The UI refresh and PBIX commits are local. Push and redeploy.
 - Windows-only build. The guide assumes Power BI Desktop and the built-in PostgreSQL connector.
 - Parity scope. The PBIX uses fixed coefficients. Streamlit refits. Parity holds for the baseline active dataset. Regenerate `powerbi_model_export.json` before a comparison on a new dataset.
 - Deployment. The public Streamlit URL is not verified against the current remote tree. Set `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in the Streamlit Cloud secrets.
