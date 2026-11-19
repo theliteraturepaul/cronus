@@ -1,10 +1,10 @@
 # Cronus Agent Instructions
 
-Cronus is a telecom churn project for an instructor submission. The submission map is in `README.md`.
+Cronus is a telecom churn project for an instructor submission. The submission map is in `README.md`. The user-facing app name is ChurnLab. The internal Python package stays `cronus`.
 
 ## Current State
 
-Last updated: 2026-11-18.
+Last updated: 2026-11-19.
 
 ### Goal and acceptance criteria
 
@@ -57,9 +57,18 @@ Phase 7 acceptance criteria:
 - Admin service: `accounts.ensure_admin_account` creates or updates the row, sets `is_admin`, reactivates it, and rotates the hash when the configured password changes. `auth.normalize_identifier` and `auth.normalize_username` back the login.
 - Admin seed: `app/shared.py` `ensure_admin_seed` and `seed_admin_account`, called from `app/main.py` before the gate. Cached once per process. A database failure is logged and does not block the app.
 - One-login flow: `app/views/account.py` accepts an email or username and marks the administrator. `app/views/admin.py` skips the password prompt when `current_account().is_admin`. Viewer accounts keep the prompt.
-- Admin settings: `ADMIN_USERNAME=admin`, `ADMIN_EMAIL=admin@cronus.local`, `ADMIN_DISPLAY_NAME=Administrator`, and `ADMIN_PASSWORD` added to the local `.env` and `.env.example`. `admin_password` in Streamlit secrets keeps priority.
+- Admin settings: `ADMIN_USERNAME=admin`, `ADMIN_EMAIL=admin@churnlab.local`, `ADMIN_DISPLAY_NAME=Administrator`, and `ADMIN_PASSWORD` added to the local `.env` and `.env.example`. `admin_password` in Streamlit secrets keeps priority.
 - Admin tests: `tests/test_accounts_db.py` covers seed creation, idempotence, password rotation, and email promotion. `tests/test_auth.py` covers username and identifier normalisation. Suite: 159 passed, 13 deselected.
 - Admin smoke test: AppTest signs in as `admin`, shows `is_admin`, renders the Admin controls without the password prompt, and still shows `Admin sign-in` for a viewer account.
+- UI refresh (2026-11-19): user-facing brand is ChurnLab. `app/main.py`, `app/shared.py`, and every view changed. No "Cronus" string remains in the UI. Commit subject: `feat: refresh ChurnLab UI and access flows`.
+- Theme: `.streamlit/config.toml` has `[theme.light]` and `[theme.dark]` palettes. `app/shared.py` `render_theme` applies a CSS override, and `render_appearance_control` renders a Light/Dark/System segmented control in the sidebar. `app/main.py` calls `render_theme` once before navigation.
+- Upload scope: every signed-in user can upload on the Admin page. A viewer load calls `ingest_dataframe(..., activate=False)`. Replace and activate controls stay admin-only, and the viewer activate checkbox is disabled.
+- Username sign-up: the create-account form requires a username. `accounts.create_account` normalises it, and a duplicate email or username raises `DuplicateAccount`.
+- Visitor metrics: `VisitorSnapshot` is now `total_visits`, `registered_users`, and `active_sessions`. The old distinct-visitor and page-view fields are gone. The strip is a compact card with three values.
+- Notebook galleries: 12 analysis PNGs and 10 modeling PNGs are in `app/assets/analysis/` and `app/assets/modeling/`. `render_notebook_charts` shows them in a two-column expander on the Overview, Providers, Usage, Performance, and Predictions pages.
+- Layout polish: `hero` and `page_header` render the `.cl-hero` block. `section_header` renders `.cl-section`. The sidebar has a brand mark. Metric cards, expanders, inputs, dataframes, and buttons have theme-aware CSS.
+- Admin identity: the default seeded email is `admin@churnlab.local`. `ensure_admin_account` updates the email on the username row when no other account holds it. The local `.env` and `.env.example` use the new value.
+- 2026-11-19 checks: `ruff check`, `ruff format --check`, and `mypy src` are clean. `pytest -m "not db"` reports 159 passed and 13 deselected. AppTest covers guest sign-in, theme switching, required username, and every analysis page render.
 - Phase 5 root `README.md` with the public URL and `GitHub/README.md`. Commit `d2ba6ff` is on `origin/main`.
 - Phase 6 model export: `PowerBI/powerbi_model_export.json`. The file moved from the repository root. It matches a fresh fit exactly.
 - Phase 6 Power Query script: `PowerBI/PowerQuery_M_Scoring.txt`. It now contains five queries: Config, ActiveDataset, CurrentRelationships, DateTable, and ScoredRelationships.
@@ -72,20 +81,17 @@ Phase 7 acceptance criteria:
 
 ### In progress
 
-- Phase 6 PBIX. `PowerBI/project_dashboard.pbix` does not exist. Power BI Desktop does not run in this WSL environment.
-- The seeded administrator commit is local and ahead 1. It is not pushed.
-- The deployment is not verified. `origin/main` is `52603f0` and contains the accounts and visitor addendum. The seeded administrator is absent from the remote. The Neon schema is at `0003`, but the deployed app needs `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in Streamlit secrets.
+- Phase 6 PBIX. An untracked `project_dashboard.pbix` sits at the repository root (706 KB, modified 2026-11-19). It contains a `DataModel` and a PBIR report definition. It is not verified in Power BI Desktop and it is not at `PowerBI/project_dashboard.pbix`. Power BI Desktop does not run in this WSL environment.
+- The UI refresh commit at `HEAD` is local and ahead 1. `origin/main` is `455da2e`.
+- The deployment is not verified. The remote tree lacks the UI refresh. The Neon schema is at `0003`. The deployed app needs `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in Streamlit secrets.
 
 ### Next steps
 
-1. Build `PowerBI/project_dashboard.pbix` on Windows Power BI Desktop. Follow `PowerBI/PBIX_Build_Guide.md`.
+1. Verify `project_dashboard.pbix` on Windows Power BI Desktop. Open it, confirm Import mode, the five pages, and both flag counts. Then move it to `PowerBI/project_dashboard.pbix`. Follow `PowerBI/PBIX_Build_Guide.md` if the file is incomplete.
 
-   - Paste the five query blocks from `PowerQuery_M_Scoring.txt`.
-   - Disable load on `Config` and `CurrentRelationships`.
-   - Set `PG_Server` and `PG_Database` in `Config`. Enter the Neon credentials in the Power BI prompt.
-   - Add the objects from `DAX_Measures.txt`.
-   - Build the five pages.
    - Confirm `[Flagged Count Default] = 1,180` and `[Flagged Count Recall70] = 3,286`.
+   - Confirm every score display and every export shows its threshold.
+   - Confirm relationship churn (19.87%) and current customer churn (9.56%) stay separate.
 
 2. Export `ScoredRelationships` to CSV. Then run the parity check:
 
@@ -96,7 +102,7 @@ Phase 7 acceptance criteria:
 
    Require `max_probability_diff <= 1e-6`. Require both flag columns to match.
 
-3. Push the seeded administrator commit. Do not add a prediction table.
+3. Push the UI refresh commit. Do not add a prediction table.
 
    ```bash
    cd "/mnt/e/VSCode Workspace/PROJECTS/cronus"
@@ -118,6 +124,13 @@ Phase 7 acceptance criteria:
 
 ### Decisions and why
 
+- No new runtime dependency. `scikit-learn` entered in Phase 3.
+- ChurnLab is the user-facing name. The internal package, database URL variables, and repository path keep `cronus`. A rename of the package would break imports, migrations, and the deployment.
+- Theme control. Streamlit 1.67 has no runtime theme setter. The app ships `[theme.light]` and `[theme.dark]` palettes, and the in-app Light and Dark options apply a CSS variable override. System follows the device preference. No JavaScript component and no new dependency.
+- Upload is open to every signed-in user. The user selected this scope. A viewer load stays inactive, and replace or activate stay admin-only. This keeps one dataset active while other users can stage a file.
+- The create-account form requires a username. A username gives a short login and a stable display label. Duplicate emails and duplicate usernames both raise `DuplicateAccount`.
+- Visitor metrics are Total Visits, Registered Users, and Active Sessions. The old unique-visitor and visitor counts were both distinct visitor keys, so they showed the same number. The new metrics count different things.
+- Notebook evidence is static PNG under `app/assets/`. The notebooks need the notebook dependency group, and the app must not run them at request time. Regenerate the PNG files when a notebook figure changes.
 - Import mode. The current frame has 8,860 rows and refresh is daily. DirectQuery adds no value.
 - Option A is active: score in Power Query. The user selected it. The PBIX stays independent of Python at view time.
 - No Option B. The project rule bans prediction tables. The refresh workflow and the CSV generator are removed. `PowerBI/scored_latest.csv` is gitignored.
@@ -163,6 +176,7 @@ Use these values in the report and in tests.
 - Configuration and services: `src/cronus/config.py`, `src/cronus/auth.py`, `src/cronus/accounts.py`, `src/cronus/visitors.py`, `src/cronus/analytics.py`, `src/cronus/repository.py`, `src/cronus/modeling/`.
 - Data contracts and schema: `src/cronus/models.py`, `src/cronus/schemas.py`, `alembic/versions/0002_accounts_and_visitors.py`, `alembic/versions/0003_admin_account.py`.
 - Application: `app/main.py`, `app/shared.py`, `app/views/`.
+- UI assets and theme: `.streamlit/config.toml`, `app/assets/analysis/analysis_01.png` to `analysis_12.png`, `app/assets/modeling/modeling_01.png` to `modeling_10.png`.
 - Tests: `tests/test_auth.py`, `tests/test_accounts.py`, `tests/test_visitors.py`, `tests/test_accounts_db.py`, `tests/test_analytics.py`, `tests/test_serving.py`, `tests/test_modeling.py`, `tests/test_config.py`, `tests/test_powerbi_export.py`.
 - Notebooks: `Python/analysis.ipynb`, `Python/modeling.ipynb`.
 - Power BI: `PowerBI/PowerQuery_M_Scoring.txt`, `PowerBI/DAX_Measures.txt`, `PowerBI/PBIX_Build_Guide.md`, `PowerBI/powerbi_model_export.json`, `PowerBI/verify_scores.py`.
@@ -171,10 +185,12 @@ Use these values in the report and in tests.
 
 ### Known issues
 
-- PBIX absent. Power BI Desktop does not run in this WSL environment. Build the file on Windows.
+- PBIX status. An untracked `project_dashboard.pbix` sits at the repository root. It is not verified in Power BI Desktop, and it is not at `PowerBI/project_dashboard.pbix`. Power BI Desktop does not run in this WSL environment.
+- Theme override limit. Streamlit 1.67 applies its own emotion styles to some widgets. The app CSS covers the page, sidebar, metrics, expanders, inputs, dataframes, and buttons. A forced Light mode on a dark device can leave a few native widgets with dark chrome. System mode is exact because the native palettes follow the device.
+- Static chart drift. `app/assets/` holds PNG files from the notebooks. A notebook figure change needs a new extraction.
+- Repository gap. `origin/main` is `455da2e`. The UI refresh commit at `HEAD` is local. Push and redeploy.
 - Windows-only build. The guide assumes Power BI Desktop and the built-in PostgreSQL connector.
 - Parity scope. The PBIX uses fixed coefficients. Streamlit refits. Parity holds for the baseline active dataset. Regenerate `powerbi_model_export.json` before a comparison on a new dataset.
-- Repository gap. `origin/main` is `52603f0`. The seeded administrator commit is local and ahead 1. The live app has the account and visitor files but not the seeded administrator. Push and redeploy.
 - Deployment. The public Streamlit URL is not verified against the current remote tree. Set `ADMIN_PASSWORD` and `VISITOR_HASH_SALT` in the Streamlit Cloud secrets.
 - DB tests. `TEST_DATABASE_URL` is not set. 13 tests are deselected.
 - AppTest limitation. `AppTest.switch_page` does not resolve callable `st.Page` objects. Test each page with `AppTest.from_string`. The sign-in gate and account flow work under `AppTest.from_file("app/main.py")`.
@@ -208,7 +224,11 @@ Expected results:
 - `ruff` and `mypy` report no issues.
 - `pytest` reports 159 passed and 13 deselected.
 - `alembic` reports `0003 (head)` and applies no new step.
-- Streamlit starts on the Account page. Sign in with `admin` and `ADMIN_PASSWORD`, and seven pages appear. The Admin page opens without a password prompt.
+- Streamlit starts on the Account page. The sidebar shows the ChurnLab mark and the Appearance control. Sign in with `admin` and `ADMIN_PASSWORD`, and seven pages appear. The Admin page opens without a password prompt.
+- The visitor strip shows Total Visits, Registered Users, and Active Sessions only.
+- The create-account form requires a username.
+- Every analysis page ends with a chart gallery. Overview shows 12 analysis images. Providers shows 4. Usage shows 6. Performance shows 10. Predictions shows 6.
+- The Light and Dark options change the page palette. System follows the device.
 
 Run the DB tests only when a separate test database exists:
 

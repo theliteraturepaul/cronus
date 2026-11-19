@@ -133,10 +133,9 @@ class AccountInfo(BaseModel):
 class VisitorSnapshot(BaseModel):
     """Aggregate visitor counts shown in the site banner."""
 
-    unique_all_time: int
-    unique_7d: int
-    page_views_7d: int
-    account_count: int
+    total_visits: int
+    registered_users: int
+    active_sessions: int
 
 
 class CronusError(Exception):
@@ -172,7 +171,7 @@ class UploadLimitExceeded(CronusError):
 
 
 class DuplicateAccount(CronusError):
-    """Raised when an email address already has an account."""
+    """Raised when an email address or username already has an account."""
 
     def __init__(self, email: str) -> None:
         self.email = email

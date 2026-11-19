@@ -1,4 +1,4 @@
-"""Cronus Streamlit entrypoint and navigation shell."""
+"""ChurnLab Streamlit entrypoint and navigation shell."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from shared import (
     current_account,
     render_guest_sidebar,
     render_sidebar,
+    render_theme,
     render_visitor_banner,
     seed_admin_account,
     show_flash,
@@ -18,8 +19,8 @@ from cronus.config import get_settings
 from cronus.logging import configure_logging
 
 st.set_page_config(
-    page_title="Cronus — Telecom Churn Intelligence",
-    page_icon="🛰️",
+    page_title="ChurnLab — Telecom Customer Churn Intelligence/Analysis System",
+    page_icon="📊",
     layout="wide",
 )
 
@@ -27,13 +28,18 @@ try:
     settings = get_settings()
 except Exception:
     st.error(
-        "Cronus is not configured. Copy `.env.example` to `.env` and provide "
+        "ChurnLab is not configured. Copy `.env.example` to `.env` and provide "
         "`DATABASE_URL` and `DIRECT_URL`. No credentials are displayed."
     )
     st.stop()
 
 configure_logging(settings.log_level)
 seed_admin_account()
+
+if "ui_theme" not in st.session_state:
+    st.session_state["ui_theme"] = "System"
+
+render_theme()
 
 account = current_account()
 show_flash()

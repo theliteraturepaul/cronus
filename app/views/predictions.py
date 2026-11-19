@@ -8,8 +8,10 @@ from shared import (
     active_summary_state,
     page_header,
     render_empty_dataset,
+    render_notebook_charts,
     scores_for,
     scoring_model_for,
+    section_header,
 )
 
 from cronus.modeling.serving import (
@@ -54,6 +56,7 @@ def render() -> None:
         "Churn predictions",
         "A ranked review queue for current customer-provider relationships.",
         summary,
+        chips=("Ranked queue", "In-sample scores"),
     )
 
     if not ok:
@@ -62,6 +65,10 @@ def render() -> None:
         render_empty_dataset()
         return
 
+    section_header(
+        "Threshold policy",
+        "Every score, display, and export carries the selected threshold.",
+    )
     policy = _selected_policy()
     st.markdown(f"**{policy.label}** · threshold `{policy.threshold:.4f}`")
     st.caption(policy.note)
@@ -108,6 +115,10 @@ def render() -> None:
         f"{policy.threshold:.4f}."
     )
 
+    section_header(
+        "Review queue",
+        "Filter the queue and choose how many rows to show.",
+    )
     with st.expander("Review queue filters", expanded=True):
         left, right = st.columns(2)
         with left:
@@ -223,7 +234,11 @@ def render() -> None:
         dataset_name=summary.dataset_name,
         as_of_date=summary.as_of_date.isoformat(),
     )
-    filename = f"cronus_churn_scores_threshold_{policy.threshold:.4f}"
+    section_header(
+        "Export",
+        "Both files include the threshold, policy label, dataset name, and snapshot date.",
+    )
+    filename = f"churnlab_churn_scores_threshold_{policy.threshold:.4f}"
     download_left, download_right = st.columns(2)
     with download_left:
         st.download_button(
@@ -252,4 +267,24 @@ def render() -> None:
         "Historical relationships are excluded. Scores rank relationships for "
         "review. They do not predict an individual customer's fate and do not "
         "estimate a causal effect."
+    )
+
+    render_notebook_charts(
+        "model performance and predictions",
+        [
+            "modeling/modeling_01.png",
+            "modeling/modeling_02.png",
+            "modeling/modeling_03.png",
+            "modeling/modeling_07.png",
+            "modeling/modeling_09.png",
+            "modeling/modeling_10.png",
+        ],
+        [
+            "Model comparison: PR-AUC and ROC-AUC",
+            "Precision-recall curves",
+            "ROC curves",
+            "Calibration plot",
+            "Temporal check: threshold selection",
+            "Confusion matrix at default vs selected threshold",
+        ],
     )

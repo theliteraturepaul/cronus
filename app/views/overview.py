@@ -7,7 +7,9 @@ from shared import (
     active_summary_state,
     page_header,
     render_empty_dataset,
+    render_notebook_charts,
     render_profile,
+    section_header,
 )
 
 
@@ -17,6 +19,7 @@ def render() -> None:
         "Overview",
         "Current customer-provider relationships, snapshot context, and dual-grain churn.",
         summary,
+        chips=("Current relationships", "Dual-grain churn"),
     )
 
     if not ok:
@@ -27,8 +30,10 @@ def render() -> None:
 
     render_profile(summary)
 
-    st.divider()
-    st.subheader("Dual-grain churn")
+    section_header(
+        "Dual-grain churn",
+        "Two rates with different denominators. Keep them separate.",
+    )
     relationship_rate = summary.relationship_churn_rate
     current_rate = summary.current_churn_rate
 
@@ -54,12 +59,10 @@ def render() -> None:
             "It is the rate used for current-customer statements and model evidence."
         )
 
-    st.warning(
-        f"Do not present {relationship_rate:.2f}% as the current customer churn rate. "
-        f"The current customer churn rate is {current_rate:.2f}%."
+    section_header(
+        "Snapshot context",
+        "Coverage, customer base, and relationship structure in the active dataset.",
     )
-
-    st.subheader("Snapshot context")
     if summary.min_registration_date and summary.max_registration_date:
         registration_window = (
             f"**{summary.min_registration_date:%d %b %Y}** to "
@@ -90,8 +93,10 @@ def render() -> None:
         "legitimate relationship, not a duplicate."
     )
 
-    st.divider()
-    st.subheader("Where to look next")
+    section_header(
+        "Where to look next",
+        "Each page keeps the same current-frame definition.",
+    )
     st.markdown(
         "- **Providers and segments** compares current churn across providers, "
         "gender, age bands, and states.\n"
@@ -105,4 +110,36 @@ def render() -> None:
     st.caption(
         "Comparisons on this dashboard are descriptive. The snapshot does not "
         "identify causes of churn."
+    )
+
+    render_notebook_charts(
+        "exploratory analysis",
+        [
+            "analysis/analysis_01.png",
+            "analysis/analysis_02.png",
+            "analysis/analysis_03.png",
+            "analysis/analysis_04.png",
+            "analysis/analysis_05.png",
+            "analysis/analysis_06.png",
+            "analysis/analysis_07.png",
+            "analysis/analysis_08.png",
+            "analysis/analysis_09.png",
+            "analysis/analysis_10.png",
+            "analysis/analysis_11.png",
+            "analysis/analysis_12.png",
+        ],
+        [
+            "Relationship vs current churn distribution",
+            "Churn by provider and gender",
+            "Age, salary, calls, SMS, data distributions",
+            "Churn rate by provider and gender",
+            "Churn rate by age band",
+            "Churn rate by state",
+            "Tenure and churn status distributions",
+            "Churn rate by usage quartiles (calls, SMS, data)",
+            "Spearman correlations with churn",
+            "Quarterly churn trends",
+            "Registration year vs churn",
+            "Historical vs current relationship profile",
+        ],
     )

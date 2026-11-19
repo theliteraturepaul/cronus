@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from shared import load_active_summary, page_header
+from shared import load_active_summary, page_header, render_notebook_charts, section_header
 
 from cronus.modeling.serving import (
     CALIBRATION_BINS,
@@ -33,6 +33,7 @@ def render() -> None:
         "Model performance",
         "Fixed Phase 3 holdout evidence for the current-relationship churn model.",
         summary,
+        chips=("Fixed evidence", "Holdout"),
     )
 
     st.info(
@@ -41,7 +42,7 @@ def render() -> None:
         "It does not retune the model, change the features, or reselect a threshold."
     )
 
-    st.subheader("Model card")
+    section_header("Model card")
     card_rows = [
         ("Model", MODEL_CARD.model_name),
         ("Features", f"{MODEL_CARD.feature_count} current-relationship features"),
@@ -62,7 +63,7 @@ def render() -> None:
         "estimate the effect of a feature on churn."
     )
 
-    st.subheader("Holdout and cross-validation metrics")
+    section_header("Holdout and cross-validation metrics")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric(
         "Holdout PR-AUC",
@@ -117,7 +118,7 @@ def render() -> None:
         f"ROC-AUC {roc_interval}, Brier {brier_interval}."
     )
 
-    st.subheader("Threshold policies")
+    section_header("Threshold policies")
     policy_frame = pd.DataFrame(
         [
             {
@@ -147,7 +148,7 @@ def render() -> None:
         "shown in the same row. The default policy is max-F1."
     )
 
-    st.subheader(f"Confusion matrix at threshold {THRESHOLD:.4f}")
+    section_header(f"Confusion matrix at threshold {THRESHOLD:.4f}")
     confusion = pd.DataFrame(
         [
             [MODEL_CARD.true_negative, MODEL_CARD.false_positive],
@@ -181,7 +182,7 @@ def render() -> None:
         f"Use {THRESHOLD:.4f} with the displayed precision and recall."
     )
 
-    st.subheader("Permutation importance on holdout PR-AUC")
+    section_header("Permutation importance on holdout PR-AUC")
     importance = pd.DataFrame(
         PERMUTATION_IMPORTANCE,
         columns=["Feature", "Mean drop in PR-AUC", "Std"],
@@ -205,7 +206,7 @@ def render() -> None:
         "measurable contribution."
     )
 
-    st.subheader(f"Subgroup recall at threshold {THRESHOLD:.4f}")
+    section_header(f"Subgroup recall at threshold {THRESHOLD:.4f}")
     subgroup = pd.DataFrame(SUBGROUP_RECALL, columns=["Segment", "Recall"])
     subgroup["Recall %"] = (subgroup["Recall"] * 100).round(2)
     st.dataframe(
@@ -224,7 +225,7 @@ def render() -> None:
         "uncertainty. Use them to plan review capacity."
     )
 
-    st.subheader("Calibration on the holdout")
+    section_header("Calibration on the holdout")
     calibration = pd.DataFrame(
         CALIBRATION_BINS,
         columns=["N", "Mean predicted", "Observed rate", "Gap"],
@@ -247,7 +248,7 @@ def render() -> None:
         "individual churn rates."
     )
 
-    st.subheader("Temporal check")
+    section_header("Temporal check")
     temporal_rows = [
         ("Train years", "–".join(str(year) for year in TEMPORAL_CHECK.train_years)),
         ("Test years", "–".join(str(year) for year in TEMPORAL_CHECK.test_years)),
@@ -276,4 +277,32 @@ def render() -> None:
         "The model does not predict an individual customer's fate. "
         "It does not estimate a causal effect. The threshold must travel "
         "with every score and export."
+    )
+
+    render_notebook_charts(
+        "model performance",
+        [
+            "modeling/modeling_01.png",
+            "modeling/modeling_02.png",
+            "modeling/modeling_03.png",
+            "modeling/modeling_04.png",
+            "modeling/modeling_05.png",
+            "modeling/modeling_06.png",
+            "modeling/modeling_07.png",
+            "modeling/modeling_08.png",
+            "modeling/modeling_09.png",
+            "modeling/modeling_10.png",
+        ],
+        [
+            "Model comparison: PR-AUC and ROC-AUC",
+            "Precision-recall curves",
+            "ROC curves",
+            "Permutation feature importance",
+            "Permutation importance by feature group",
+            "Subgroup recall by provider",
+            "Calibration plot",
+            "Temporal check: PR-AUC over time",
+            "Temporal check: threshold selection",
+            "Confusion matrix at default vs selected threshold",
+        ],
     )

@@ -36,7 +36,7 @@ def record_visit(
 
 
 def read_visitor_snapshot(session: Session, *, since: datetime) -> VisitorSnapshot:
-    """Return all-time and seven-day visitor counts in one statement."""
+    """Return total visits, registered users, and active sessions in one statement."""
 
     account_count = (
         select(func.count())
@@ -46,20 +46,18 @@ def read_visitor_snapshot(session: Session, *, since: datetime) -> VisitorSnapsh
     )
 
     statement = select(
-        func.count(distinct(VisitorEvent.visitor_key)).label("unique_all_time"),
-        func.count(distinct(VisitorEvent.visitor_key))
+        func.count().label("total_visits"),
+        account_count.label("registered_users"),
+        func.count(distinct(VisitorEvent.session_id))
         .filter(VisitorEvent.viewed_at >= since)
-        .label("unique_7d"),
-        func.count().filter(VisitorEvent.viewed_at >= since).label("page_views_7d"),
-        account_count.label("account_count"),
+        .label("active_sessions"),
     ).select_from(VisitorEvent)
 
     row = session.execute(statement).one()
     return VisitorSnapshot(
-        unique_all_time=int(row.unique_all_time or 0),
-        unique_7d=int(row.unique_7d or 0),
-        page_views_7d=int(row.page_views_7d or 0),
-        account_count=int(row.account_count or 0),
+        total_visits=int(row.total_visits or 0),
+        registered_users=int(row.registered_users or 0),
+        active_sessions=int(row.active_sessions or 0),
     )
 
 

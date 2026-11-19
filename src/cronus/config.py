@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     max_upload_rows: int = Field(default=200_000, gt=0)
     admin_password: SecretStr | None = None
     admin_username: str = "admin"
-    admin_email: str = "admin@cronus.local"
+    admin_email: str = "admin@churnlab.local"
     admin_display_name: str = "Administrator"
     visitor_hash_salt: SecretStr | None = None
     allow_signup: bool = True

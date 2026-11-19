@@ -7,6 +7,7 @@ import time
 import streamlit as st
 from shared import (
     current_account,
+    hero,
     show_db_failure,
     sign_in_session,
     sign_out_session,
@@ -26,7 +27,7 @@ def _load_settings() -> Settings | None:
         return get_settings()
     except Exception:
         st.error(
-            "Cronus is not configured. Copy `.env.example` to `.env` and provide "
+            "ChurnLab is not configured. Copy `.env.example` to `.env` and provide "
             "`DATABASE_URL` and `DIRECT_URL`. No credentials are displayed."
         )
         return None
@@ -98,6 +99,15 @@ def _render_create() -> None:
             key="account-create-name",
             placeholder="Your name",
         )
+        username = st.text_input(
+            "Username",
+            key="account-create-username",
+            placeholder="yourusername",
+            help=(
+                "3 to 40 characters. Start with a letter or digit. "
+                "Use lowercase letters, digits, dots, hyphens, or underscores."
+            ),
+        )
         email = st.text_input(
             "Email",
             key="account-create-email",
@@ -123,6 +133,9 @@ def _render_create() -> None:
     if password != confirmation:
         st.error("The passwords do not match.")
         return
+    if not username.strip():
+        st.error("Enter a username.")
+        return
 
     try:
         with session_scope() as session:
@@ -131,9 +144,10 @@ def _render_create() -> None:
                 email=email,
                 display_name=display_name,
                 password=password,
+                username=username.strip(),
             )
     except DuplicateAccount:
-        st.error("That email already has an account. Sign in instead.")
+        st.error("That email or username already has an account. Sign in instead.")
         return
     except ValueError as exc:
         st.error(str(exc))
@@ -168,8 +182,12 @@ def _render_signed_in(account: AccountInfo) -> None:
 
 
 def render() -> None:
-    st.title("Account")
-    st.caption("Sign in with your email or username. Accounts are local to this application.")
+    hero(
+        "Account",
+        "Telecom Customer Churn Intelligence/Analysis System. Sign in to open the dashboard.",
+        eyebrow="Secure access",
+        chips=("Local accounts",),
+    )
 
     if st.session_state.pop("account_expired", False):
         st.warning("Your session expired. Sign in again.")

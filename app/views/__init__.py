@@ -1,1 +1,1 @@
-"""Streamlit page modules for Cronus."""
+"""Streamlit page modules for ChurnLab."""

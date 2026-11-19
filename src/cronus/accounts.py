@@ -29,6 +29,7 @@ def create_account(
     email: str,
     display_name: str,
     password: str,
+    username: str | None = None,
 ) -> AccountInfo:
     """Validate the fields and insert one active account.
 
@@ -42,8 +43,13 @@ def create_account(
     name = validate_display_name(display_name)
     validate_password(password, email=normalized, display_name=name)
 
+    normalized_username = normalize_username(username) if username else None
+    if normalized_username is not None and len(normalized_username) < 3:
+        raise ValueError("Username must be at least 3 characters.")
+
     user = AppUser(
         email=normalized,
+        username=normalized_username,
         display_name=name,
         password_hash=hash_password(password),
     )
@@ -114,6 +120,14 @@ def ensure_admin_account(
             user.display_name = name
             user.is_admin = True
             user.is_active = True
+            email_taken = session.scalar(
+                select(AppUser).where(
+                    AppUser.email == normalized_email,
+                    AppUser.id != user.id,
+                )
+            )
+            if email_taken is None:
+                user.email = normalized_email
             if not verify_password(password, user.password_hash):
                 user.password_hash = hash_password(password)
 

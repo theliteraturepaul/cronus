@@ -170,7 +170,7 @@ def test_record_visit_links_to_the_account(
         assert event.user_id is None
 
 
-def test_visitor_snapshot_separates_all_time_and_seven_days(
+def test_visitor_snapshot_counts_visits_users_and_sessions(
     session_factory: sessionmaker[Session],
 ) -> None:
     now = datetime.now(UTC)
@@ -208,10 +208,9 @@ def test_visitor_snapshot_separates_all_time_and_seven_days(
     with session_factory() as session:
         snapshot = read_visitor_snapshot(session, since=now - timedelta(days=7))
 
-    assert snapshot.unique_all_time == 2
-    assert snapshot.unique_7d == 1
-    assert snapshot.page_views_7d == 2
-    assert snapshot.account_count == 1
+    assert snapshot.total_visits == 3
+    assert snapshot.registered_users == 1
+    assert snapshot.active_sessions == 1
 
 
 ADMIN_PASSWORD = "admin-correct-horse-battery"
@@ -230,7 +229,7 @@ def test_ensure_admin_account_creates_an_admin(
         )
 
     assert created.username == "admin"
-    assert created.email == "admin@cronus.local"
+    assert created.email == "admin@churnlab.local"
     assert created.display_name == "Administrator"
     assert created.is_admin is True
 
@@ -248,7 +247,7 @@ def test_ensure_admin_account_is_idempotent(
         first = ensure_admin_account(
             session,
             username="admin",
-            email="admin@cronus.local",
+            email="admin@churnlab.local",
             display_name="Administrator",
             password=ADMIN_PASSWORD,
         )
@@ -257,7 +256,7 @@ def test_ensure_admin_account_is_idempotent(
         second = ensure_admin_account(
             session,
             username="admin",
-            email="admin@cronus.local",
+            email="admin@churnlab.local",
             display_name="Administrator",
             password=ADMIN_PASSWORD,
         )
@@ -273,7 +272,7 @@ def test_ensure_admin_account_updates_the_password(
         first = ensure_admin_account(
             session,
             username="admin",
-            email="admin@cronus.local",
+            email="admin@churnlab.local",
             display_name="Administrator",
             password="old-admin-password-123",
         )
@@ -282,7 +281,7 @@ def test_ensure_admin_account_updates_the_password(
         second = ensure_admin_account(
             session,
             username="admin",
-            email="admin@cronus.local",
+            email="admin@churnlab.local",
             display_name="Administrator",
             password="new-admin-password-456",
         )
@@ -314,7 +313,7 @@ def test_ensure_admin_account_promotes_an_existing_email(
     with session_factory() as session:
         viewer = create_account(
             session,
-            email="admin@cronus.local",
+            email="admin@churnlab.local",
             display_name="Some Viewer",
             password=PASSWORD,
         )
@@ -323,7 +322,7 @@ def test_ensure_admin_account_promotes_an_existing_email(
         seeded = ensure_admin_account(
             session,
             username="admin",
-            email="admin@cronus.local",
+            email="admin@churnlab.local",
             display_name="Administrator",
             password=ADMIN_PASSWORD,
         )

@@ -144,7 +144,7 @@ def test_account_settings_defaults() -> None:
 def test_admin_settings_defaults() -> None:
     settings = Settings(_env_file=None, database_url="postgresql://u:p@host/db")
     assert settings.admin_username == "admin"
-    assert settings.admin_email == "admin@cronus.local"
+    assert settings.admin_email == "admin@churnlab.local"
     assert settings.admin_display_name == "Administrator"
 
 

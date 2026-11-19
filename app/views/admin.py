@@ -18,6 +18,7 @@ from shared import (
     page_header,
     render_profile,
     render_validation,
+    section_header,
     show_db_failure,
 )
 
@@ -27,6 +28,7 @@ from cronus.db import session_scope
 from cronus.ingest import ingest_dataframe
 from cronus.repository import activate_dataset, get_dataset_by_hash
 from cronus.schemas import (
+    AccountInfo,
     DatasetAlreadyExists,
     DatasetLookup,
     UploadLimitExceeded,
@@ -45,7 +47,7 @@ LOCK_SECONDS = 60
 
 
 def _render_login(expected: str) -> None:
-    st.subheader("Admin sign-in")
+    section_header("Admin sign-in")
     st.caption(
         "Upload, replacement, and activation stay locked until the session "
         "passes the password check."
@@ -150,13 +152,20 @@ def _load_new(
     )
 
 
-def _render_upload_panel(settings: Settings) -> None:
-    st.subheader("Upload a dataset")
+def _render_upload_panel(settings: Settings, account: AccountInfo | None, is_admin: bool) -> None:
+    section_header(
+        "Upload a dataset",
+        "Every signed-in user can stage a file. Only an administrator can replace or activate one.",
+    )
     st.caption(
         f"Validation runs before any write. Hard errors leave the database "
         f"unchanged. Limits: {settings.max_upload_mb} MB and "
         f"{settings.max_upload_rows:,} data rows."
     )
+
+    if account is None:
+        st.warning("Sign in to upload a dataset.")
+        return
 
     uploaded = st.file_uploader(
         "Upload churn CSV",
@@ -211,44 +220,47 @@ def _render_upload_panel(settings: Settings) -> None:
             f"This exact file is already loaded as **{existing.name}** "
             f"({existing.relationship_count:,} relationships, {active_label})."
         )
-        if st.button(
-            "Activate existing dataset",
-            key=f"admin-activate-existing-{digest[:12]}",
-            disabled=existing.is_active,
-        ):
-            _activate_existing(existing)
+        if is_admin:
+            if st.button(
+                "Activate existing dataset",
+                key=f"admin-activate-existing-{digest[:12]}",
+                disabled=existing.is_active,
+            ):
+                _activate_existing(existing)
 
-        replace_name = st.text_input(
-            "Dataset name for replacement",
-            value=existing.name,
-            key=f"admin-replace-name-{digest[:12]}",
-        )
-        activate_after = st.checkbox(
-            "Activate after load",
-            value=True,
-            key=f"admin-replace-activate-{digest[:12]}",
-        )
-        confirm_replace = st.checkbox(
-            "I understand this deletes the existing dataset with the same hash "
-            "and reloads it from this file.",
-            key=f"admin-replace-confirm-{digest[:12]}",
-        )
-        replace_disabled = report.has_errors or not confirm_replace or not replace_name.strip()
-        if st.button(
-            "Replace with this file",
-            type="primary",
-            key=f"admin-replace-{digest[:12]}",
-            disabled=replace_disabled,
-        ):
-            _load_new(
-                cleaned=cleaned,
-                report=report,
-                dataset_name=replace_name,
-                original_filename=uploaded.name,
-                digest=digest,
-                activate=activate_after,
-                replace=True,
+            replace_name = st.text_input(
+                "Dataset name for replacement",
+                value=existing.name,
+                key=f"admin-replace-name-{digest[:12]}",
             )
+            activate_after = st.checkbox(
+                "Activate after load",
+                value=True,
+                key=f"admin-replace-activate-{digest[:12]}",
+            )
+            confirm_replace = st.checkbox(
+                "I understand this deletes the existing dataset with the same hash "
+                "and reloads it from this file.",
+                key=f"admin-replace-confirm-{digest[:12]}",
+            )
+            replace_disabled = report.has_errors or not confirm_replace or not replace_name.strip()
+            if st.button(
+                "Replace with this file",
+                type="primary",
+                key=f"admin-replace-{digest[:12]}",
+                disabled=replace_disabled,
+            ):
+                _load_new(
+                    cleaned=cleaned,
+                    report=report,
+                    dataset_name=replace_name,
+                    original_filename=uploaded.name,
+                    digest=digest,
+                    activate=activate_after,
+                    replace=True,
+                )
+        else:
+            st.caption("Replacement and activation require admin access.")
     else:
         dataset_name = st.text_input(
             "Dataset name",
@@ -257,8 +269,9 @@ def _render_upload_panel(settings: Settings) -> None:
         )
         activate_after = st.checkbox(
             "Activate after load",
-            value=True,
+            value=is_admin,
             key=f"admin-activate-after-{digest[:12]}",
+            disabled=not is_admin,
         )
         load_disabled = report.has_errors or not dataset_name.strip()
         if st.button(
@@ -273,7 +286,7 @@ def _render_upload_panel(settings: Settings) -> None:
                 dataset_name=dataset_name,
                 original_filename=uploaded.name,
                 digest=digest,
-                activate=activate_after,
+                activate=activate_after if is_admin else False,
                 replace=False,
             )
 
@@ -281,7 +294,7 @@ def _render_upload_panel(settings: Settings) -> None:
 
 
 def _render_datasets() -> None:
-    st.subheader("Datasets")
+    section_header("Datasets", "Activate an existing dataset or inspect the load history.")
     try:
         datasets = load_datasets()
     except Exception as exc:
@@ -340,6 +353,8 @@ def render() -> None:
         "Admin",
         "Dataset upload, replacement, and activation behind an admin gate.",
         summary,
+        eyebrow="Data operations",
+        chips=("Upload open to signed-in users", "Replace and activate are admin-only"),
     )
 
     if not summary_ok:
@@ -349,7 +364,7 @@ def render() -> None:
         settings = get_settings()
     except Exception:
         st.error(
-            "Cronus is not configured. Copy `.env.example` to `.env` and provide "
+            "ChurnLab is not configured. Copy `.env.example` to `.env` and provide "
             "`DATABASE_URL` and `DIRECT_URL`. No credentials are displayed."
         )
         return
@@ -365,21 +380,26 @@ def render() -> None:
         return
 
     account = current_account()
-    if account is not None and account.is_admin:
+    is_admin_user = account is not None and account.is_admin
+    is_admin_authenticated = st.session_state.get("admin_authenticated", False)
+
+    if is_admin_user:
         st.success(f"Admin tools unlocked by the administrator account {account.display_name!r}.")
         st.caption(
             "The seeded account passed its password check on the Account page. "
             "Sign-out is in the sidebar."
         )
-    else:
-        if not st.session_state.get("admin_authenticated"):
-            _render_login(expected)
-            return
-
+    elif is_admin_authenticated:
         st.success("Admin signed in for this browser session.")
         st.caption(
             "The password is never displayed, logged, or exported. Sign-out is in the sidebar."
         )
+    else:
+        msg = (
+            "Upload is available to all signed-in users. "
+            "Replacement and activation require admin access."
+        )
+        st.info(msg)
 
     if summary is None:
         st.info(
@@ -387,14 +407,19 @@ def render() -> None:
             "load the baseline snapshot."
         )
     else:
-        st.subheader("Active dataset")
+        section_header(
+            "Active dataset",
+            "The current frame that powers analytics and scoring.",
+        )
         render_profile(summary)
 
     st.divider()
-    _render_upload_panel(settings)
+    is_admin_allowed = is_admin_user or is_admin_authenticated
+    _render_upload_panel(settings, account=account, is_admin=is_admin_allowed)
 
     st.divider()
-    _render_datasets()
+    if is_admin_user or is_admin_authenticated:
+        _render_datasets()
 
     st.divider()
     st.caption(

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import html
 import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -178,11 +180,17 @@ def sign_out_session() -> None:
 def render_guest_sidebar() -> None:
     """Render the sidebar for a visitor who is not signed in."""
 
-    st.sidebar.markdown("## Cronus")
-    st.sidebar.caption("Telecom churn intelligence")
-    st.sidebar.divider()
+    st.sidebar.markdown(
+        '<div class="cl-brand">'
+        '<span class="cl-brand-mark">CL</span>'
+        "<span><strong>ChurnLab</strong><br>"
+        '<span class="cl-brand-sub">Telecom churn analysis</span></span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.sidebar.info("Sign in to open the dashboard.")
     st.sidebar.caption("Accounts are local to this application. No verification email is sent.")
+    render_appearance_control()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -273,17 +281,23 @@ def render_visitor_banner(account: AccountInfo | None = None) -> None:
         if snapshot is None:
             return
 
-        with st.container(border=True):
-            st.caption("Visitor analytics")
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Unique visitors", f"{snapshot.unique_all_time:,}")
-            col2.metric("Visitors · 7 days", f"{snapshot.unique_7d:,}")
-            col3.metric("Page views · 7 days", f"{snapshot.page_views_7d:,}")
-            col4.metric("Accounts", f"{snapshot.account_count:,}")
-            if recording:
-                st.caption("Anonymous counts. No IP addresses or cookies are stored.")
-            else:
-                st.caption("Visitor recording is off. Set `VISITOR_HASH_SALT` to start counting.")
+        st.markdown(
+            '<div class="cl-visitor">'
+            '<span class="cl-eyebrow">Visitor analytics</span>'
+            '<div class="cl-visitor-grid">'
+            f"<div><strong>{snapshot.total_visits:,}</strong><span>Total visits</span></div>"
+            f"<div><strong>{snapshot.registered_users:,}</strong>"
+            "<span>Registered users</span></div>"
+            f"<div><strong>{snapshot.active_sessions:,}</strong>"
+            "<span>Active sessions</span></div>"
+            "</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        if recording:
+            st.caption("Anonymous counts. No IP addresses or cookies are stored.")
+        else:
+            st.caption("Visitor recording is off. Set `VISITOR_HASH_SALT` to start counting.")
     except Exception as exc:
         logger.warning("Visitor banner unavailable: %s", exc)
 
@@ -452,9 +466,311 @@ def seed_admin_account() -> None:
         logger.warning("Admin seed unavailable: %s", exc)
 
 
+_LIGHT_VARS = """
+    --cl-bg: #FFFFFF;
+    --cl-bg-soft: #F8FAFC;
+    --cl-surface: #FFFFFF;
+    --cl-surface-2: #F1F5F9;
+    --cl-text: #0F172A;
+    --cl-muted: #475569;
+    --cl-border: #E2E8F0;
+    --cl-primary: #0F766E;
+    --cl-primary-soft: #CCFBF1;
+    --cl-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+"""
+
+_DARK_VARS = """
+    --cl-bg: #0B1220;
+    --cl-bg-soft: #0F1A2B;
+    --cl-surface: #152238;
+    --cl-surface-2: #111C2E;
+    --cl-text: #E6EDF7;
+    --cl-muted: #94A3B8;
+    --cl-border: #24344D;
+    --cl-primary: #2DD4BF;
+    --cl-primary-soft: #134E4A;
+    --cl-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+"""
+
+
+def _theme_css(theme: str) -> str:
+    normalized = theme.strip().lower()
+    text_force = ""
+    if normalized == "dark":
+        variables = f":root {{{_DARK_VARS}}}"
+        text_force = "p, span, label, li, dd, dt, td, th { color: var(--cl-text) !important; }"
+    elif normalized == "light":
+        variables = f":root {{{_LIGHT_VARS}}}"
+        text_force = "p, span, label, li, dd, dt, td, th { color: var(--cl-text) !important; }"
+    else:
+        variables = (
+            f":root {{{_LIGHT_VARS}}}@media (prefers-color-scheme: dark) {{:root {{{_DARK_VARS}}}}}"
+        )
+
+    return f"""
+    <style>
+    {variables}
+    html, body, .stApp, [data-testid="stAppViewContainer"] {{
+        background-color: var(--cl-bg) !important;
+        color: var(--cl-text) !important;
+    }}
+    [data-testid="stHeader"], [data-testid="stToolbar"] {{ background: transparent !important; }}
+    [data-testid="stDecoration"] {{
+        background-image: linear-gradient(90deg, var(--cl-primary), #38BDF8) !important;
+    }}
+    [data-testid="stSidebar"] {{
+        background-color: var(--cl-surface-2) !important;
+        border-right: 1px solid var(--cl-border);
+    }}
+    [data-testid="stSidebar"] * {{ color: var(--cl-text); }}
+    h1, h2, h3, h4, h5, h6 {{ color: var(--cl-text) !important; letter-spacing: -0.015em; }}
+    {text_force}
+    [data-testid="stCaptionContainer"], .stCaption {{ color: var(--cl-muted) !important; }}
+    hr {{ border-color: var(--cl-border) !important; }}
+    [data-testid="stMetric"] {{
+        background: var(--cl-surface);
+        border: 1px solid var(--cl-border);
+        border-radius: 14px;
+        padding: 14px 16px;
+        box-shadow: var(--cl-shadow);
+    }}
+    [data-testid="stMetricLabel"] p {{
+        color: var(--cl-muted) !important;
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
+    }}
+    [data-testid="stMetricValue"] {{ color: var(--cl-text) !important; }}
+    [data-testid="stExpander"] details {{
+        background: var(--cl-surface);
+        border: 1px solid var(--cl-border);
+        border-radius: 12px;
+    }}
+    [data-testid="stExpander"] summary {{ color: var(--cl-text); }}
+    [data-testid="stVerticalBlockBorderWrapper"] {{
+        border-color: var(--cl-border) !important;
+        border-radius: 16px;
+    }}
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div,
+    [data-baseweb="textarea"] > div {{
+        background-color: var(--cl-surface) !important;
+        border-color: var(--cl-border) !important;
+        color: var(--cl-text) !important;
+    }}
+    input, textarea {{
+        color: var(--cl-text) !important;
+        background-color: transparent !important;
+    }}
+    [data-baseweb="popover"], [data-baseweb="menu"], [role="listbox"] {{
+        background-color: var(--cl-surface) !important;
+    }}
+    li[role="option"] {{ color: var(--cl-text) !important; }}
+    [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid var(--cl-border); }}
+    [data-baseweb="tab"] {{ color: var(--cl-muted); }}
+    [data-baseweb="tab"][aria-selected="true"] {{ color: var(--cl-primary); }}
+    [data-testid="stDataFrame"] {{
+        --gdg-accent-color: var(--cl-primary);
+        --gdg-accent-light: var(--cl-primary-soft);
+        --gdg-bg-bubble: var(--cl-surface);
+        --gdg-bg-cell: var(--cl-surface);
+        --gdg-bg-header: var(--cl-surface-2);
+        --gdg-bg-header-has-focus: var(--cl-surface-2);
+        --gdg-border-color: var(--cl-border);
+        --gdg-link-color: var(--cl-primary);
+        --gdg-text-dark: var(--cl-text);
+        --gdg-text-group-header: var(--cl-text);
+        --gdg-text-light: var(--cl-muted);
+        --gdg-text-medium: var(--cl-text);
+        border: 1px solid var(--cl-border);
+        border-radius: 12px;
+        overflow: hidden;
+    }}
+    [data-testid="stForm"] {{
+        background: var(--cl-surface);
+        border: 1px solid var(--cl-border);
+        border-radius: 16px;
+        padding: 1rem 1.25rem;
+    }}
+    .stButton > button, .stDownloadButton > button {{
+        border-radius: 10px;
+        border-color: var(--cl-border);
+        color: var(--cl-text);
+    }}
+    [data-testid="stBaseButton-primary"] {{
+        background-color: var(--cl-primary) !important;
+        border-color: var(--cl-primary) !important;
+        color: #05201C !important;
+        font-weight: 600;
+    }}
+    [data-testid="stBaseButton-secondary"] {{
+        background-color: var(--cl-surface) !important;
+        border-color: var(--cl-border) !important;
+        color: var(--cl-text) !important;
+    }}
+    [data-testid="stCodeBlock"] pre, pre, code {{
+        background-color: var(--cl-surface-2) !important;
+        color: var(--cl-text) !important;
+        border-radius: 8px;
+    }}
+    [data-testid="stAlert"] {{ border-radius: 12px; }}
+    .block-container {{
+        padding-top: 2.4rem;
+        padding-bottom: 3.5rem;
+        max-width: 1180px;
+    }}
+    .cl-hero {{
+        border-bottom: 1px solid var(--cl-border);
+        padding-bottom: 1.1rem;
+        margin-bottom: 1.4rem;
+    }}
+    .cl-eyebrow {{
+        color: var(--cl-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-bottom: 0.35rem;
+    }}
+    .cl-hero h1 {{
+        font-size: 2.1rem;
+        line-height: 1.15;
+        margin: 0 0 0.35rem 0;
+    }}
+    .cl-hero p {{
+        color: var(--cl-muted) !important;
+        font-size: 0.98rem;
+        margin: 0;
+    }}
+    .cl-chip {{
+        display: inline-block;
+        background: var(--cl-primary-soft);
+        color: var(--cl-primary) !important;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        padding: 0.22rem 0.6rem;
+        margin-right: 0.35rem;
+    }}
+    .cl-hero-meta {{
+        color: var(--cl-muted);
+        font-size: 0.82rem;
+        margin-top: 0.75rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+    }}
+    .cl-brand {{
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 0.2rem 0 0.9rem 0;
+    }}
+    .cl-brand-mark {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.1rem;
+        height: 2.1rem;
+        border-radius: 11px;
+        background: linear-gradient(135deg, var(--cl-primary), #38BDF8);
+        color: #05201C !important;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+    }}
+    .cl-brand strong {{ font-size: 1.02rem; letter-spacing: -0.01em; }}
+    .cl-brand-sub {{ color: var(--cl-muted) !important; font-size: 0.74rem; }}
+    .cl-section {{
+        margin: 1.9rem 0 0.7rem 0;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--cl-border);
+    }}
+    .cl-section h3 {{
+        font-size: 1.05rem;
+        margin: 0;
+    }}
+    .cl-section p {{
+        color: var(--cl-muted) !important;
+        font-size: 0.84rem;
+        margin: 0.2rem 0 0 0;
+    }}
+    .cl-visitor {{
+        background: var(--cl-surface);
+        border: 1px solid var(--cl-border);
+        border-radius: 14px;
+        box-shadow: var(--cl-shadow);
+        padding: 0.7rem 1rem 0.8rem 1rem;
+        margin-bottom: 0.6rem;
+    }}
+    .cl-visitor .cl-eyebrow {{ margin-bottom: 0.45rem; }}
+    .cl-visitor-grid {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.8rem;
+    }}
+    .cl-visitor-grid div {{
+        display: flex;
+        flex-direction: column;
+        line-height: 1.15;
+    }}
+    .cl-visitor-grid strong {{
+        font-size: 1.25rem;
+        color: var(--cl-text);
+    }}
+    .cl-visitor-grid span {{
+        font-size: 0.74rem;
+        color: var(--cl-muted) !important;
+        letter-spacing: 0.02em;
+    }}
+    [data-testid="stImage"] img {{
+        border: 1px solid var(--cl-border);
+        border-radius: 12px;
+        background: var(--cl-surface);
+    }}
+    </style>
+    """
+
+
+THEME_OPTIONS = ["Light", "Dark", "System"]
+
+
+def render_theme() -> None:
+    """Apply the selected palette. Call once per run, before navigation."""
+
+    if st.session_state.get("ui_theme") not in THEME_OPTIONS:
+        st.session_state["ui_theme"] = "System"
+    st.markdown(_theme_css(st.session_state["ui_theme"]), unsafe_allow_html=True)
+
+
+def render_appearance_control() -> None:
+    """Render the sidebar appearance control. Call once per run."""
+
+    st.sidebar.divider()
+    st.sidebar.caption("Appearance")
+    selected = st.sidebar.segmented_control(
+        "Appearance",
+        options=THEME_OPTIONS,
+        key="ui_theme",
+        required=True,
+        label_visibility="collapsed",
+        help="Light or dark palette. System follows your device setting.",
+    )
+    if selected is None:
+        st.session_state["ui_theme"] = "System"
+        st.rerun()
+
+
 def render_sidebar() -> None:
-    st.sidebar.markdown("## Cronus")
-    st.sidebar.caption("Telecom churn intelligence")
+    st.sidebar.markdown(
+        '<div class="cl-brand">'
+        '<span class="cl-brand-mark">CL</span>'
+        "<span><strong>ChurnLab</strong><br>"
+        '<span class="cl-brand-sub">Telecom churn analysis</span></span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     try:
         summary = load_active_summary()
@@ -516,23 +832,55 @@ def render_sidebar() -> None:
         "Relationship churn covers all history. Current customer churn covers "
         "only the latest relationship per customer."
     )
+    render_appearance_control()
+
+
+def hero(
+    title: str,
+    subtitle: str,
+    *,
+    eyebrow: str = "ChurnLab",
+    chips: tuple[str, ...] = (),
+    meta: str = "",
+) -> None:
+    """Render a page hero with an optional chip row and meta line."""
+
+    chip_html = "".join(f'<span class="cl-chip">{html.escape(chip)}</span>' for chip in chips)
+    meta_html = ""
+    if chip_html or meta:
+        meta_html = f'<div class="cl-hero-meta">{chip_html}{meta}</div>'
+
+    st.markdown(
+        f'<div class="cl-hero">'
+        f'<div class="cl-eyebrow">{html.escape(eyebrow)}</div>'
+        f"<h1>{html.escape(title)}</h1>"
+        f"<p>{html.escape(subtitle)}</p>"
+        f"{meta_html}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def page_header(
     title: str,
     subtitle: str,
     summary: ActiveDatasetSummary | None,
+    *,
+    eyebrow: str = "ChurnLab",
+    chips: tuple[str, ...] = (),
 ) -> None:
-    st.title(title)
-    st.caption(subtitle)
-    if summary is None:
-        st.caption("No active dataset")
-        return
-    st.caption(
-        f"Active dataset: **{summary.dataset_name}** · "
-        f"snapshot {summary.as_of_date:%d %b %Y} · "
-        f"{summary.current_relationship_count:,} current relationships"
-    )
+    """Render the page hero and the active dataset context."""
+
+    if summary is not None:
+        meta = (
+            f"Active dataset <strong>{html.escape(summary.dataset_name)}</strong>"
+            f" · snapshot {summary.as_of_date:%d %b %Y}"
+            f" · {summary.current_relationship_count:,} current relationships"
+        )
+    else:
+        meta = "No active dataset"
+
+    hero(title, subtitle, eyebrow=eyebrow, chips=chips, meta=meta)
 
 
 def render_empty_dataset() -> None:
@@ -706,6 +1054,38 @@ def format_proportion(value: float) -> str:
 
 def format_percentage(value: float) -> str:
     return f"{value:.2f}%"
+
+
+def section_header(title: str, description: str = "") -> None:
+    """Render a consistent section heading."""
+
+    detail = f"<p>{html.escape(description)}</p>" if description else ""
+    st.markdown(
+        f'<div class="cl-section"><h3>{html.escape(title)}</h3>{detail}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_notebook_charts(section: str, chart_filenames: list[str], captions: list[str]) -> None:
+    """Render notebook charts as a two-column grid inside an expander."""
+    if not chart_filenames:
+        return
+
+    section_header(
+        f"Notebook evidence — {section}",
+        "Static figures from the analysis notebook. Open the panel to review them.",
+    )
+    expander_title = f"Show {len(chart_filenames)} charts"
+    root = Path(__file__).resolve().parent / "assets"
+    with st.expander(expander_title, expanded=False):
+        cols = st.columns(2)
+        for i, (fname, caption) in enumerate(zip(chart_filenames, captions, strict=False)):
+            with cols[i % 2]:
+                st.image(
+                    str(root / fname),
+                    caption=f"{i + 1}. {caption}",
+                    width="stretch",
+                )
 
 
 def threshold_badge(policy: ThresholdPolicy) -> None:

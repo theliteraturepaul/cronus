@@ -1,8 +1,8 @@
-# Cronus — Telecom Churn Intelligence
+# ChurnLab — Telecom Customer Churn Intelligence/Analysis System
 
 **Deployed app:** https://churn-lab.streamlit.app/
 
-Cronus is a customer-provider relationship analytics system for telecom churn.
+ChurnLab is a customer-provider relationship analytics system for telecom churn.
 It combines a Python data platform, a scikit-learn churn model, a Streamlit
 interface, Neon Postgres, and a later Power BI dashboard. The project is being
 built for a Data Analytics with Python and Power BI internship.
@@ -67,18 +67,24 @@ Phase 4 — analytics UI and admin workflow — is implemented:
 - The fixed Phase 3 logistic model is refitted on the active current frame and
   cached in the Streamlit process with `st.cache_resource`
 - Every score display and CSV export carries its decision threshold
-- A seeded administrator account and a password gate protect upload,
-  replacement, and activation, and the gate fails closed when no password is
-  configured
+- A seeded administrator account and a password gate guard dataset replacement
+  and activation, and the gate fails closed when no password is configured.
+  Upload is open to every signed-in user.
 - No model artifact, prediction table, or new runtime dependency
 
 Phase 4 addendum (2026-11-18): the app now has local email/password accounts and
 site-wide visitor analytics. Every dashboard page requires a signed-in account,
 and the Admin page keeps its separate password gate for viewer accounts. The
-visitor strip shows unique visitors, seven-day visitors, seven-day page views,
-and account count. Migration `0002` adds `app_users` and `visitor_events`.
-Migration `0003` adds the seeded administrator username and role flag, so one
-fixed login opens the dashboard and the Admin page.
+visitor strip shows Total Visits, Registered Users, and Active Sessions (7 days).
+Migration `0002` adds `app_users` and `visitor_events`. Migration `0003` adds the
+seeded administrator username and role flag, so one fixed login opens the
+dashboard and the Admin page.
+
+UI refresh: the user-facing name is ChurnLab. The sidebar has a Light, Dark, and
+System appearance control. The create-account form asks for a username. Every
+signed-in user can upload a dataset. Only an administrator can replace or
+activate one. Each analysis page links its charts to the matching notebook in a
+static chart gallery under `app/assets/`.
 
 Phase 5 is complete. Phase 6 is in progress: the Power Query scoring, the DAX
 objects, and the build guide are ready, and the PBIX build is pending. Phase 7
@@ -88,7 +94,7 @@ is not started.
 
 ```mermaid
 flowchart LR
-    analyst[Analyst] -->|admin sign-in<br/>uploads CSV| streamlit[Streamlit app<br/>app/main.py]
+    analyst[Analyst] -->|sign in<br/>uploads CSV| streamlit[Streamlit app<br/>app/main.py]
     csv[Dataset/project_dataset.csv] --> streamlit
     csv -->|validation service| notebook[Python/analysis.ipynb<br/>Phase 2]
     csv -->|modeling modules| modeling[Python/modeling.ipynb<br/>Phase 3]
@@ -101,12 +107,15 @@ flowchart LR
   application interface. There is no custom CLI or console entry point. The
   administrator account is seeded at application start-up.
 - The app has seven pages. The Admin page is the only place that uploads,
-  replaces, or activates a dataset, and it requires the seeded administrator
-  account or the admin password.
+  replaces, or activates a dataset. Every signed-in user can upload. Only the
+  seeded administrator account or an admin password session can replace or
+  activate.
 - The Phase 2 and Phase 3 notebooks read the canonical CSV through the
   validation service. They do not connect to Neon.
 - Alembic is the only command-line tool used to change the database schema.
 - The application uses the pooled Neon URL; Alembic uses the direct URL.
+- The internal Python package remains `cronus`; the user-facing app name is
+  ChurnLab.
 
 ## Stack
 
@@ -241,7 +250,7 @@ Set the seeded administrator account in `.env`:
 
 ```bash
 ADMIN_USERNAME=admin
-ADMIN_EMAIL=admin@cronus.local
+ADMIN_EMAIL=admin@churnlab.local
 ADMIN_DISPLAY_NAME=Administrator
 ADMIN_PASSWORD=choose-a-long-password
 ```
@@ -311,6 +320,12 @@ is written. The pages are:
    activation
 7. **Account** — sign-up, sign-in, session details, and sign-out
 
+The sidebar includes an **Appearance** control with Light, Dark, and System
+options. Upload is available to all signed-in users; replacement and activation
+require admin access. The visitor strip shows Total Visits, Registered Users, and
+Active Sessions (7 days). Each analysis page also opens a chart gallery from the
+matching notebook.
+
 ### 5. Run the analysis notebook
 
 The notebook needs no database and no `.env` file. It reads
@@ -376,7 +391,7 @@ Database tests refuse to run when `TEST_DATABASE_URL` equals `DATABASE_URL`.
 | `APP_ENV` | no | `development` | `development`, `test`, or `production` |
 | `LOG_LEVEL` | no | `INFO` | Python logging level |
 | `ADMIN_USERNAME` | no | `admin` | Seeded administrator sign-in name |
-| `ADMIN_EMAIL` | no | `admin@cronus.local` | Seeded administrator email address |
+| `ADMIN_EMAIL` | no | `admin@churnlab.local` | Seeded administrator email address |
 | `ADMIN_DISPLAY_NAME` | no | `Administrator` | Seeded administrator display name |
 | `ADMIN_PASSWORD` | no | — | Seed password and Admin page gate. Blank skips the seed and keeps the gate locked |
 | `VISITOR_HASH_SALT` | no | — | Secret salt for the anonymous visitor HMAC. Blank disables visitor recording |
@@ -395,10 +410,14 @@ The app registers seven pages with `st.navigation` and `st.Page` in
 `app/shared.py` owns cached database reads, the sidebar, the visitor strip, and
 reusable display helpers. Page modules live in `app/views/`.
 
-A bordered visitor strip sits above every page, including the sign-in page. It
-shows unique visitors, seven-day visitors, seven-day page views, and the active
-account count. The strip never blocks the page, and it renders nothing when the
-database read fails.
+A compact visitor strip sits above every page, including the sign-in page. It
+shows Total Visits, Registered Users, and Active Sessions (7 days). The strip
+never blocks the page, and it renders nothing when the database read fails.
+
+The sidebar carries the ChurnLab mark, the active dataset, the connection status,
+the refresh control, the account state, and the appearance control. The Light and
+Dark options override the palette in the page CSS. System follows the device
+preference.
 
 - **Overview**: active dataset name, snapshot date, registration window,
   unique customers, relationship counts, partner count, multi-provider
@@ -415,15 +434,21 @@ database read fails.
 - **Churn predictions**: a ranked review queue for the active current frame.
   The page offers the two fixed Phase 3 policies. Every metric label, table
   column, filename, and CSV export carries the selected threshold.
-- **Admin**: administrator account or password gate, upload, replacement, and
-  activation. The seeded `is_admin` account opens the tools after its Account
-  page sign-in. A viewer account uses the separate password gate. The gate
-  resolves `st.secrets["admin_password"]` first, then `Settings.admin_password`
-  from `ADMIN_PASSWORD`. When both are blank, the page fails closed.
-- **Account**: create an account, sign in with an email or username, and sign
-  out. The page shows the display name, username, email address, and
+- **Admin**: dataset upload for every signed-in user, with replacement and
+  activation restricted to admins. The seeded `is_admin` account opens the tools
+  after its Account page sign-in. A viewer account uses the separate password
+  gate for replace and activate. The gate resolves `st.secrets["admin_password"]`
+  first, then `Settings.admin_password` from `ADMIN_PASSWORD`. When both are
+  blank, the page fails closed.
+- **Account**: create an account with a display name, a required username, an
+  email address, and a password. Sign in with the email or the username, and
+  sign out. The page shows the display name, username, email address, and
   member-since date. An administrator badge marks the seeded account. Sign-in
   locks for 60 seconds after five failed attempts in one session.
+
+Each analysis page ends with a collapsible chart gallery. The gallery shows the
+static figures from `Python/analysis.ipynb` or `Python/modeling.ipynb` that match
+the page. The PNG files live in `app/assets/analysis/` and `app/assets/modeling/`.
 
 Every page except Account requires a signed-in account. Admin actions need the
 administrator account or a viewer session that passed the separate password
@@ -636,12 +661,16 @@ The Admin page is the only page with write controls.
 3. Fail closed when both values are missing or blank.
 4. Compare the candidate with `hmac.compare_digest`.
 5. Lock the form for 60 seconds after five failed attempts in one session.
-6. Show upload, replacement, and activation controls only after one of the two
-   checks passes.
+6. Show the replace and activate controls only after one of the two checks
+   passes. The upload panel is open to every signed-in user.
 
 The password is never displayed, logged, stored in the database, or written to
 an export. Sign-in lasts for the Streamlit browser session. The sidebar shows
 the lock or administrator state and provides sign-out.
+
+A signed-in viewer can upload a dataset. The load leaves the new dataset
+inactive. The viewer cannot replace or activate a dataset, and the activate
+control is disabled.
 
 Uploads run the existing validation and ingestion services. Validation errors
 leave the database unchanged. A byte-identical file offers activation of the
@@ -660,10 +689,11 @@ Migration `0002_accounts_and_visitors.py` adds two tables, and migration
   visitor digest, the Streamlit session id, an optional account id, the page
   path, and the timestamp.
 
-Accounts are local to the application. Sign-up asks for a display name, email,
-password, and password confirmation. The password policy is 12 to 128
-characters with no composition rules, and the password must not equal the email
-address or the display name.
+Accounts are local to the application. Sign-up asks for a display name, username
+(optional), email, password, and password confirmation. The username must be
+3–40 characters, lowercase letters and numbers only. The password policy is 12
+to 128 characters with no composition rules, and the password must not equal the
+email address or the display name.
 
 Passwords use `hashlib.scrypt` from the standard library with `n=16384`, `r=8`,
 `p=1`, a random 16-byte salt, and a 64-byte digest. Each hash carries its own
@@ -707,6 +737,11 @@ agent. On localhost, where Streamlit reports no IP address, the session id
 replaces the IP so local runs still produce counts. One session writes at most
 one row per page per 30 minutes, and the throttle state lives in the Streamlit
 session.
+
+The banner shows **Total Visits** (all-time page views), **Registered Users**
+(active account count), and **Active Sessions** (distinct sessions in the last
+7 days). The "unique visitors" and "visitors · 7 days" metrics were replaced
+because they both counted distinct visitor keys and showed identical values.
 
 Set `VISITOR_HASH_SALT` to a long random string before you deploy. Generate one
 with:

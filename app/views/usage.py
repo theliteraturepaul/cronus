@@ -10,9 +10,11 @@ from shared import (
     page_header,
     render_current_filters,
     render_empty_dataset,
+    render_notebook_charts,
     render_rate_bar,
     render_rate_table,
     render_usage_table,
+    section_header,
 )
 
 from cronus.analytics import (
@@ -44,6 +46,7 @@ def render() -> None:
         "Usage and tenure",
         "Current churn by tenure band, usage quartile, registration cohort, and rank correlation.",
         summary,
+        chips=("Current frame", "Usage and tenure"),
     )
 
     if not ok:
@@ -81,6 +84,10 @@ def render() -> None:
     col2.metric("Churned — latest only", f"{churned:,}")
     col3.metric("Current churn rate", f"{(churned / total) * 100:.2f}%")
 
+    section_header(
+        "Behavioural comparisons",
+        "Open a tab to compare churn across tenure, usage, cohorts, or rank correlation.",
+    )
     tenure_tab, calls_tab, sms_tab, data_tab, cohort_tab, correlation_tab = st.tabs(
         [
             "Tenure",
@@ -160,3 +167,23 @@ def render() -> None:
             "Spearman rho measures rank association with current churn in the "
             "filtered frame. It is not a causal effect."
         )
+
+    render_notebook_charts(
+        "usage and tenure",
+        [
+            "analysis/analysis_03.png",
+            "analysis/analysis_07.png",
+            "analysis/analysis_08.png",
+            "analysis/analysis_09.png",
+            "analysis/analysis_10.png",
+            "analysis/analysis_11.png",
+        ],
+        [
+            "Age, salary, calls, SMS, data distributions",
+            "Tenure and churn status distributions",
+            "Churn rate by usage quartiles (calls, SMS, data)",
+            "Spearman correlations with churn",
+            "Quarterly churn trends",
+            "Registration year vs churn",
+        ],
+    )

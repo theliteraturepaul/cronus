@@ -10,8 +10,10 @@ from shared import (
     page_header,
     render_current_filters,
     render_empty_dataset,
+    render_notebook_charts,
     render_rate_bar,
     render_rate_table,
+    section_header,
 )
 
 from cronus.analytics import age_band_table, churn_rate_table, wilson_interval
@@ -45,6 +47,7 @@ def render() -> None:
         "Providers and segments",
         "Current customer churn by provider, gender, age band, and state.",
         summary,
+        chips=("Current frame", "Descriptive comparison"),
     )
 
     if not ok:
@@ -90,6 +93,10 @@ def render() -> None:
         f"Small-sample segments have fewer than {SMALL_SAMPLE} relationships."
     )
 
+    section_header(
+        "Segment comparisons",
+        "Tables show the count, rate, interval, and share for each segment.",
+    )
     provider_tab, gender_tab, age_tab, state_tab = st.tabs(
         ["Providers", "Gender", "Age bands", "States"]
     )
@@ -155,3 +162,19 @@ def render() -> None:
             title="Current churn rate by state",
             height=480,
         )
+
+    render_notebook_charts(
+        "providers and segments",
+        [
+            "analysis/analysis_02.png",
+            "analysis/analysis_04.png",
+            "analysis/analysis_05.png",
+            "analysis/analysis_06.png",
+        ],
+        [
+            "Churn by provider and gender",
+            "Churn rate by provider and gender",
+            "Churn rate by age band",
+            "Churn rate by state",
+        ],
+    )
