@@ -5,11 +5,21 @@ from __future__ import annotations
 import streamlit as st
 from shared import (
     active_summary_state,
+    current_frame_for,
     page_header,
+    render_dual_grain_chart,
     render_empty_dataset,
-    render_notebook_charts,
     render_profile,
+    render_rate_bar,
     section_header,
+)
+
+from cronus.analytics import (
+    age_band_table,
+    churn_rate_table,
+    registration_cohort_table,
+    tenure_band_table,
+    usage_quartile_table,
 )
 
 
@@ -28,21 +38,22 @@ def render() -> None:
         render_empty_dataset()
         return
 
+    frame = current_frame_for(summary)
+    if frame is None:
+        return
+
     render_profile(summary)
 
     section_header(
         "Dual-grain churn",
         "Two rates with different denominators. Keep them separate.",
     )
-    relationship_rate = summary.relationship_churn_rate
-    current_rate = summary.current_churn_rate
-
     left, right = st.columns(2)
     with left:
         st.metric(
             "Relationship churn — all history",
             f"{summary.relationship_churn_count:,} of {summary.relationship_count:,} "
-            f"({relationship_rate:.2f}%)",
+            f"({summary.relationship_churn_rate:.2f}%)",
         )
         st.caption(
             "This rate covers every customer-provider relationship in the snapshot. "
@@ -52,12 +63,19 @@ def render() -> None:
         st.metric(
             "Current customer churn — latest only",
             f"{summary.current_churn_count:,} of {summary.current_relationship_count:,} "
-            f"({current_rate:.2f}%)",
+            f"({summary.current_churn_rate:.2f}%)",
         )
         st.caption(
             "This rate covers one latest relationship per customer. "
             "It is the rate used for current-customer statements and model evidence."
         )
+
+    render_dual_grain_chart(
+        relationship_count=summary.relationship_count,
+        relationship_churned=summary.relationship_churn_count,
+        current_count=summary.current_relationship_count,
+        current_churned=summary.current_churn_count,
+    )
 
     section_header(
         "Snapshot context",
@@ -93,6 +111,44 @@ def render() -> None:
         "legitimate relationship, not a duplicate."
     )
 
+    st.divider()
+    st.caption(
+        "All comparisons below use the latest relationship per customer. "
+        "Historical relationships are excluded."
+    )
+
+    section_header("Current churn by provider", "Live computation from the active dataset.")
+    provider_table = churn_rate_table(frame, "telecom_partner", min_n=30)
+    render_rate_bar(provider_table, title="Current churn rate by provider", height=320)
+
+    section_header("Current churn by gender", "Live computation from the active dataset.")
+    gender_table = churn_rate_table(frame, "gender", min_n=30)
+    render_rate_bar(gender_table, title="Current churn rate by gender", height=280)
+
+    section_header("Current churn by age band", "Live computation from the active dataset.")
+    age_table = age_band_table(frame)
+    render_rate_bar(age_table, title="Current churn rate by age band", height=300)
+
+    section_header("Current churn by tenure band", "Live computation from the active dataset.")
+    tenure_table = tenure_band_table(frame)
+    render_rate_bar(tenure_table, title="Current churn rate by tenure band", height=300)
+
+    section_header("Current churn by usage quartile", "Live computation from the active dataset.")
+    for column, label in [("calls_made", "Calls"), ("sms_sent", "SMS"), ("data_used", "Data")]:
+        try:
+            usage_table = usage_quartile_table(frame, column)
+        except ValueError:
+            continue
+        render_rate_bar(
+            usage_table,
+            title=f"Current churn rate by {label.lower()} quartile",
+            height=220,
+        )
+
+    section_header("Quarterly churn trend", "Live computation from the active dataset.")
+    cohort_table = registration_cohort_table(frame)
+    render_rate_bar(cohort_table, title="Current churn rate by registration year", height=300)
+
     section_header(
         "Where to look next",
         "Each page keeps the same current-frame definition.",
@@ -102,44 +158,13 @@ def render() -> None:
         "gender, age bands, and states.\n"
         "- **Usage and tenure** shows current churn by tenure band, usage quartile, "
         "registration cohort, and rank correlation.\n"
-        "- **Model performance** reports the fixed Phase 3 holdout evidence and "
+        "- **Model performance** reports the fixed baseline holdout evidence and "
         "threshold policies.\n"
         "- **Churn predictions** ranks current relationships and exports the "
-        "scored queue with its threshold."
+        "scored queue with its threshold.\n"
+        "- **Power BI dashboard** opens the published report or the packaged PBIX."
     )
     st.caption(
         "Comparisons on this dashboard are descriptive. The snapshot does not "
         "identify causes of churn."
-    )
-
-    render_notebook_charts(
-        "exploratory analysis",
-        [
-            "analysis/analysis_01.png",
-            "analysis/analysis_02.png",
-            "analysis/analysis_03.png",
-            "analysis/analysis_04.png",
-            "analysis/analysis_05.png",
-            "analysis/analysis_06.png",
-            "analysis/analysis_07.png",
-            "analysis/analysis_08.png",
-            "analysis/analysis_09.png",
-            "analysis/analysis_10.png",
-            "analysis/analysis_11.png",
-            "analysis/analysis_12.png",
-        ],
-        [
-            "Relationship vs current churn distribution",
-            "Churn by provider and gender",
-            "Age, salary, calls, SMS, data distributions",
-            "Churn rate by provider and gender",
-            "Churn rate by age band",
-            "Churn rate by state",
-            "Tenure and churn status distributions",
-            "Churn rate by usage quartiles (calls, SMS, data)",
-            "Spearman correlations with churn",
-            "Quarterly churn trends",
-            "Registration year vs churn",
-            "Historical vs current relationship profile",
-        ],
     )

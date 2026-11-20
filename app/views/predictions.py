@@ -7,8 +7,9 @@ import streamlit as st
 from shared import (
     active_summary_state,
     page_header,
+    render_count_bar,
     render_empty_dataset,
-    render_notebook_charts,
+    render_score_histogram,
     scores_for,
     scoring_model_for,
     section_header,
@@ -90,7 +91,7 @@ def render() -> None:
     )
     st.caption(
         "The model fits the active current frame and scores the same rows. "
-        "These scores are in-sample. The Phase 3 holdout metrics remain the "
+        "These scores are in-sample. The holdout metrics remain the "
         "out-of-sample evidence."
     )
 
@@ -114,6 +115,35 @@ def render() -> None:
         f"A relationship is flagged when its score is at or above "
         f"{policy.threshold:.4f}."
     )
+
+    # Score distribution chart (live)
+    section_header("Score distribution", "Live computation from the active dataset.")
+    render_score_histogram(scored, threshold=policy.threshold)
+    st.caption(
+        "Grey bars show all scores. Teal bars show flagged relationships. "
+        f"The dashed line marks threshold {policy.threshold:.4f}."
+    )
+
+    section_header(
+        "Flagged relationships by provider",
+        "Live computation from the active dataset.",
+    )
+    flagged = scored[scored["predicted_churn"]]
+    if not flagged.empty:
+        provider_counts = (
+            flagged["telecom_partner"]
+            .value_counts()
+            .rename_axis("Provider")
+            .reset_index(name="Flagged count")
+        )
+        render_count_bar(
+            provider_counts,
+            category="Provider",
+            value="Flagged count",
+            height=320,
+        )
+    else:
+        st.info("No relationships flagged at this threshold.")
 
     section_header(
         "Review queue",
@@ -267,24 +297,4 @@ def render() -> None:
         "Historical relationships are excluded. Scores rank relationships for "
         "review. They do not predict an individual customer's fate and do not "
         "estimate a causal effect."
-    )
-
-    render_notebook_charts(
-        "model performance and predictions",
-        [
-            "modeling/modeling_01.png",
-            "modeling/modeling_02.png",
-            "modeling/modeling_03.png",
-            "modeling/modeling_07.png",
-            "modeling/modeling_09.png",
-            "modeling/modeling_10.png",
-        ],
-        [
-            "Model comparison: PR-AUC and ROC-AUC",
-            "Precision-recall curves",
-            "ROC curves",
-            "Calibration plot",
-            "Temporal check: threshold selection",
-            "Confusion matrix at default vs selected threshold",
-        ],
     )

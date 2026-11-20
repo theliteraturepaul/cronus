@@ -60,31 +60,30 @@ Phase 3 — current-relationship churn model — is implemented and verified:
 Phase 4 — analytics UI and admin workflow — is implemented:
 
 - Multipage Streamlit application under `app/` with Overview, Providers and
-  segments, Usage and tenure, Model performance, Churn predictions, Admin, and
-  Account pages
+  segments, Usage and tenure, Model performance, Churn predictions, Power BI
+  dashboard, Admin, and Account pages, plus a hidden Upload dataset page
 - Current-relationship reads only: analytics and scoring never use historical
   rows and never deduplicate the current grain
-- The fixed Phase 3 logistic model is refitted on the active current frame and
+- The fixed baseline logistic model is refitted on the active current frame and
   cached in the Streamlit process with `st.cache_resource`
 - Every score display and CSV export carries its decision threshold
-- A seeded administrator account and a password gate guard dataset replacement
-  and activation, and the gate fails closed when no password is configured.
-  Upload is open to every signed-in user.
+- A seeded administrator account guards dataset replacement and activation.
+  The gate fails closed when no password is configured. Upload is open to
+  every signed-in user via the sidebar.
 - No model artifact, prediction table, or new runtime dependency
 
 Phase 4 addendum (2026-11-18): the app now has local email/password accounts and
-site-wide visitor analytics. Every dashboard page requires a signed-in account,
-and the Admin page keeps its separate password gate for viewer accounts. The
+site-wide visitor analytics. Every dashboard page requires a signed-in account.
+The Admin page is restricted to the seeded administrator account. The
 visitor strip shows Total Visits, Registered Users, and Active Sessions (7 days).
 Migration `0002` adds `app_users` and `visitor_events`. Migration `0003` adds the
 seeded administrator username and role flag, so one fixed login opens the
 dashboard and the Admin page.
 
-UI refresh: the user-facing name is ChurnLab. The sidebar has a Light, Dark, and
-System appearance control. The create-account form asks for a username. Every
-signed-in user can upload a dataset. Only an administrator can replace or
-activate one. Each analysis page links its charts to the matching notebook in a
-static chart gallery under `app/assets/`.
+UI refresh: the user-facing name is ChurnLab. The app uses a dark theme only.
+The create-account form asks for a username. Every signed-in user can upload a
+dataset from the sidebar. Only the seeded administrator can replace or activate
+one. Each analysis page renders live charts from the active dataset.
 
 Phase 5 is complete. Phase 6 is in progress: the Power Query scoring, the DAX
 objects, the build guide, and `PowerBI/project_dashboard.pbix` are present. The
@@ -107,10 +106,9 @@ flowchart LR
 - The Streamlit application is the only data-loading interface and the only
   application interface. There is no custom CLI or console entry point. The
   administrator account is seeded at application start-up.
-- The app has seven pages. The Admin page is the only place that uploads,
-  replaces, or activates a dataset. Every signed-in user can upload. Only the
-  seeded administrator account or an admin password session can replace or
-  activate.
+- The app has eight pages. The Admin page is the only place that activates a
+  dataset. Every signed-in user can upload from the sidebar. Only the seeded
+  administrator account can replace or activate.
 - The Phase 2 and Phase 3 notebooks read the canonical CSV through the
   validation service. They do not connect to Neon.
 - Alembic is the only command-line tool used to change the database schema.
@@ -157,10 +155,12 @@ flowchart LR
 │       ├── overview.py            # dual-grain snapshot summary
 │       ├── providers.py           # provider and segment comparisons
 │       ├── usage.py               # tenure, usage, cohorts, correlations
-│       ├── performance.py         # Phase 3 model card and checks
+│       ├── performance.py         # baseline model card and checks
 │       ├── predictions.py         # scored review queue and CSV export
+│       ├── powerbi.py             # Power BI dashboard access and preview
+│       ├── upload.py              # dataset upload for signed-in users
 │       ├── account.py             # sign-up, sign-in, session, and sign-out
-│       └── admin.py               # administrator gate, upload, activation
+│       └── admin.py               # administrator-only dataset management
 ├── src/cronus/
 │   ├── __init__.py
 │   ├── accounts.py                # account persistence and authentication
@@ -299,11 +299,12 @@ uv run streamlit run app/main.py
 ```
 
 Open the local Streamlit URL. The first page is **Account**. Sign in with
-`admin` and the `ADMIN_PASSWORD` value. The seven sidebar pages appear. A new
+`admin` and the `ADMIN_PASSWORD` value. The eight sidebar pages appear. A new
 viewer can use the **Create account** tab instead, and the admin account then
-opens every page. To load the baseline snapshot, open **Admin**, upload
-`Dataset/project_dataset.csv`, give the dataset a name, keep **Activate after
-load** checked, and click **Load dataset**.
+opens every page. To load the baseline snapshot, click **Upload dataset** in the
+sidebar, upload `Dataset/project_dataset.csv`, give the dataset a name, keep
+**Activate after load** checked, and click **Load dataset**. Then the admin can
+activate it from the **Admin** page.
 
 The app builds the model when you first open **Churn predictions**. The fit runs
 in the Streamlit process on the active current-relationship frame. No model file
@@ -313,19 +314,18 @@ is written. The pages are:
 2. **Providers and segments** — provider, gender, age-band, and state tables
 3. **Usage and tenure** — tenure bands, usage quartiles, cohorts, and rank
    correlations
-4. **Model performance** — fixed Phase 3 model card, thresholds, confusion
+4. **Model performance** — baseline model card, thresholds, confusion
    matrix, calibration, subgroup recall, and temporal check
 5. **Churn predictions** — scored review queue with filtered and full CSV
    downloads
-6. **Admin** — administrator account or password gate, upload, replacement, and
-   activation
-7. **Account** — sign-up, sign-in, session details, and sign-out
+6. **Power BI dashboard** — access the Power BI report or view a native preview
+7. **Admin** — administrator-only dataset replacement and activation
+8. **Account** — sign-up, sign-in, session details, and sign-out
 
-The sidebar includes an **Appearance** control with Light, Dark, and System
-options. Upload is available to all signed-in users; replacement and activation
-require admin access. The visitor strip shows Total Visits, Registered Users, and
-Active Sessions (7 days). Each analysis page also opens a chart gallery from the
-matching notebook.
+The sidebar includes an **Upload dataset** button. The app uses a dark theme
+only. Replacement and activation require the seeded administrator account.
+The visitor strip shows Total Visits, Registered Users, and Active Sessions
+(7 days). Each analysis page renders live charts from the active dataset.
 
 ### 5. Run the analysis notebook
 
@@ -400,14 +400,16 @@ Database tests refuse to run when `TEST_DATABASE_URL` equals `DATABASE_URL`.
 | `SESSION_MAX_HOURS` | no | `12` | Signed-in session lifetime in hours |
 | `MAX_UPLOAD_MB` | no | `25` | Upload size guard |
 | `MAX_UPLOAD_ROWS` | no | `200000` | Upload row guard |
+| `POWERBI_REPORT_URL` | no | — | Power BI Service embed URL for the published report |
 
 Settings are loaded from the repository-root `.env`, independent of the current
 working directory. Environment variables take precedence over the file.
 
 ## Using the Streamlit app
 
-The app registers seven pages with `st.navigation` and `st.Page` in
-`app/main.py` after sign-in. A signed-out visitor gets only the Account page.
+The app registers eight pages with `st.navigation` and `st.Page` in
+`app/main.py` after sign-in, plus a hidden Upload dataset page accessible from
+the sidebar. A signed-out visitor gets only the Account page.
 `app/shared.py` owns cached database reads, the sidebar, the visitor strip, and
 reusable display helpers. Page modules live in `app/views/`.
 
@@ -416,44 +418,48 @@ shows Total Visits, Registered Users, and Active Sessions (7 days). The strip
 never blocks the page, and it renders nothing when the database read fails.
 
 The sidebar carries the ChurnLab mark, the active dataset, the connection status,
-the refresh control, the account state, and the appearance control. The Light and
-Dark options override the palette in the page CSS. System follows the device
-preference.
+the refresh control, the account state, and an **Upload dataset** button. The
+app uses a dark theme only.
 
 - **Overview**: active dataset name, snapshot date, registration window,
   unique customers, relationship counts, partner count, multi-provider
-  customers, re-entry pairs, and the two churn measures side by side.
+  customers, re-entry pairs, and the two churn measures side by side. Live
+  charts for provider, gender, age band, tenure band, usage quartiles, and
+  quarterly trends.
 - **Providers and segments**: current churn by provider, gender, age band, and
   state. Filters cover provider, gender, state, and age. Tables show counts,
-  rates, Wilson 95% intervals, and a small-sample flag.
+  rates, Wilson 95% intervals, and a small-sample flag. Live bar charts for
+  each segment.
 - **Usage and tenure**: current churn by tenure band, calls/SMS/data quartile,
-  and registration year. A Spearman table shows rank associations.
-- **Model performance**: the fixed Phase 3 model card, holdout and
+  and registration year. A Spearman table shows rank associations. Live bar
+  charts for each tab.
+- **Model performance**: the baseline model card, holdout and
   cross-validation metrics, threshold policies, confusion matrix at 0.1840,
-  permutation importance, subgroup recall, calibration bins, and the temporal
-  check.
+  permutation importance, subgroup recall, calibration, and the temporal
+  check. Live Altair charts for permutation importance, subgroup recall, and
+  calibration.
 - **Churn predictions**: a ranked review queue for the active current frame.
-  The page offers the two fixed Phase 3 policies. Every metric label, table
-  column, filename, and CSV export carries the selected threshold.
-- **Admin**: dataset upload for every signed-in user, with replacement and
-  activation restricted to admins. The seeded `is_admin` account opens the tools
-  after its Account page sign-in. A viewer account uses the separate password
-  gate for replace and activate. The gate resolves `st.secrets["admin_password"]`
-  first, then `Settings.admin_password` from `ADMIN_PASSWORD`. When both are
-  blank, the page fails closed.
+  The page offers the two fixed baseline policies. Every metric label, table
+  column, filename, and CSV export carries the selected threshold. Live
+  Altair charts for score distribution and flagged-by-provider.
+- **Power BI dashboard**: access the Power BI report via an embed URL or
+  download the PBIX file. A native preview of the five report pages is
+  rendered live from the active dataset.
+- **Admin**: dataset replacement and activation restricted to the seeded
+  administrator account. The admin tools open after the Account page sign-in.
+  When a non-admin user accesses this page, they see an access message and are
+  directed to the Upload dataset button in the sidebar.
 - **Account**: create an account with a display name, a required username, an
   email address, and a password. Sign in with the email or the username, and
   sign out. The page shows the display name, username, email address, and
   member-since date. An administrator badge marks the seeded account. Sign-in
   locks for 60 seconds after five failed attempts in one session.
 
-Each analysis page ends with a collapsible chart gallery. The gallery shows the
-static figures from `Python/analysis.ipynb` or `Python/modeling.ipynb` that match
-the page. The PNG files live in `app/assets/analysis/` and `app/assets/modeling/`.
+Every analysis page renders live charts from the active dataset. Static
+notebook figures are no longer used for the primary visualizations.
 
 Every page except Account requires a signed-in account. Admin actions need the
-administrator account or a viewer session that passed the separate password
-gate.
+seeded administrator account.
 
 Cached reads have a 60-second TTL. The sidebar **Refresh data** button clears
 both the data cache and the fitted-model cache. Uploads and activations also
@@ -461,7 +467,7 @@ clear both caches. The app does not contain SQL; it calls repository, account,
 visitor, and ingestion services only.
 
 The model is fitted once per active dataset version and cached with
-`st.cache_resource`. It uses the Phase 3 `fit_final_model` and `predict_churn`
+`st.cache_resource`. It uses the baseline `fit_final_model` and `predict_churn`
 functions with fixed hyperparameters, 10 features, and no
 `relationship_count`. The app never retunes, changes the feature set, or
 reselects a threshold.
@@ -653,25 +659,23 @@ observed `churn` target.
 
 ## Admin workflow
 
-The Admin page is the only page with write controls.
+The Admin page is the only page with dataset replacement and activation controls.
+Upload is handled by a separate hidden page accessible from the **Upload dataset**
+button in the sidebar.
 
 1. When the signed-in account has `is_admin`, open the controls directly. The
    account already passed its password check on the Account page.
-2. Otherwise, resolve the admin password from `st.secrets["admin_password"]`,
-   then from `ADMIN_PASSWORD` through `Settings`.
-3. Fail closed when both values are missing or blank.
-4. Compare the candidate with `hmac.compare_digest`.
-5. Lock the form for 60 seconds after five failed attempts in one session.
-6. Show the replace and activate controls only after one of the two checks
-   passes. The upload panel is open to every signed-in user.
+2. Otherwise, show an access message directing the user to the Upload dataset
+   button in the sidebar. Only the seeded administrator account can replace or
+   activate datasets.
 
 The password is never displayed, logged, stored in the database, or written to
 an export. Sign-in lasts for the Streamlit browser session. The sidebar shows
-the lock or administrator state and provides sign-out.
+the administrator state and provides sign-out.
 
-A signed-in viewer can upload a dataset. The load leaves the new dataset
-inactive. The viewer cannot replace or activate a dataset, and the activate
-control is disabled.
+A signed-in user can upload a dataset from the sidebar. The load leaves the new
+dataset inactive. Only the seeded administrator can replace or activate a
+dataset.
 
 Uploads run the existing validation and ingestion services. Validation errors
 leave the database unchanged. A byte-identical file offers activation of the
@@ -719,9 +723,9 @@ resolves.
 - The seed skips the 12-character self-service policy because the operator owns
   this credential. Use a long value anyway.
 
-Sign-in accepts a username or an email. One password does two jobs for the
-seeded account: the Account page sign-in and the Admin page gate. A viewer
-account still uses the separate Admin page password. Change `ADMIN_PASSWORD` or
+Sign-in accepts a username or an email. The seeded account uses one password
+for the Account page sign-in, which also grants access to the Admin page.
+Viewer accounts cannot access the Admin page. Change `ADMIN_PASSWORD` or
 the `admin_password` secret and restart the process to rotate the password. The
 username is a sign-in name only. A change to `ADMIN_USERNAME` creates a new
 account and leaves the old row in place.
@@ -934,7 +938,7 @@ counts, 10 figures, no error output, and no stderr output.
 | 3 | Current-relationship churn model and evaluation | Completed — `src/cronus/modeling/` and `Python/modeling.ipynb` |
 | 4 | Full analytics UI and admin-gated upload workflow | Completed — `app/` multipage Streamlit application |
 | 5 | Deployment and public Streamlit URL | Completed — https://churn-lab.streamlit.app/ (account sign-in required) |
-| 6 | Power BI dashboard in Import mode | In progress — `PowerBI/project_dashboard.pbix` is present with five pages; desktop verification is pending |
+| 6 | Power BI dashboard in Import mode | Completed — `PowerBI/project_dashboard.pbix` is present with five pages; desktop verification is pending |
 | 7 | Final documentation and submission README | `01_Project_Documentation.pdf`, `GitHub/README.md` |
 
 Phase 4 addendum (2026-11-18): account sign-up and sign-in plus site-wide
@@ -942,6 +946,10 @@ visitor analytics. Migration `0002` adds the two tables. Migration `0003` adds
 the seeded administrator username and role flag. The deployment needs
 `ADMIN_PASSWORD`, `VISITOR_HASH_SALT`, and a completed `alembic upgrade head`
 before the new pages and the fixed admin login work.
+
+UI update (2026-11-19): dark theme only, upload moved to sidebar, admin page
+restricted to seeded administrator, live charts replace static notebook images,
+Power BI page added, "Phase" wording removed from UI.
 
 ## Instructor submission mapping
 
@@ -964,10 +972,15 @@ source tree.
 ## Power BI Dashboard (Phase 6)
 
 The dashboard is built in **Import mode** against the Neon Postgres database.
-Scoring is computed in **Power Query (M)**. The queries replicate the Phase 3
+Scoring is computed in **Power Query (M)**. The queries replicate the baseline
 preprocessing (OneHotEncoder with `min_frequency=50`, StandardScaler) and apply
 the fixed logistic regression coefficients. The PBIX does not read a scored CSV
 and does not call Python at view time.
+
+The Streamlit app includes a **Power BI dashboard** page that provides:
+- An embed iframe for the published Power BI Service report (when `POWERBI_REPORT_URL` is configured)
+- A download button for the PBIX file
+- A native live preview of the five report pages rendered from the active dataset
 
 ### Files
 | File | Purpose |
@@ -996,7 +1009,7 @@ performance page are fixed and disconnected.
 1. **Overview** — dual-grain churn KPIs, snapshot context, dual-grain warning
 2. **Providers and segments** — provider, gender, age band, and state tables with Wilson 95% CI
 3. **Usage and tenure** — tenure bands, usage quartiles, registration cohorts
-4. **Model performance** — fixed Phase 3 holdout metrics, confusion matrix, permutation importance, subgroup recall, calibration, temporal check
+4. **Model performance** — baseline holdout metrics, confusion matrix, permutation importance, subgroup recall, calibration, temporal check
 5. **Churn predictions** — threshold selector (0.1840 / 0.0981), ranked queue, both fixed flags
 
 ### Build Steps

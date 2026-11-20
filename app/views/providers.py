@@ -10,7 +10,6 @@ from shared import (
     page_header,
     render_current_filters,
     render_empty_dataset,
-    render_notebook_charts,
     render_rate_bar,
     render_rate_table,
     section_header,
@@ -162,19 +161,3 @@ def render() -> None:
             title="Current churn rate by state",
             height=480,
         )
-
-    render_notebook_charts(
-        "providers and segments",
-        [
-            "analysis/analysis_02.png",
-            "analysis/analysis_04.png",
-            "analysis/analysis_05.png",
-            "analysis/analysis_06.png",
-        ],
-        [
-            "Churn by provider and gender",
-            "Churn rate by provider and gender",
-            "Churn rate by age band",
-            "Churn rate by state",
-        ],
-    )

@@ -79,6 +79,16 @@ Phase 7 acceptance criteria:
 - Option B removed: the scored CSV workflow, the CSV generator, and the local prediction table. `PowerBI/scored_latest.csv` is gitignored.
 - Stale root `model_coefficients.json` deleted. It mapped 10 raw feature names to 43 coefficients.
 
+### UI update (2026-11-20)
+
+- Dark theme only. `.streamlit/config.toml` sets `base = "dark"`. The Appearance control, `THEME_OPTIONS`, `_LIGHT_VARS`, and `render_appearance_control` are removed. `render_theme()` takes no argument.
+- Upload moved to the sidebar. `app/main.py` registers a hidden `upload` page and a sidebar `Upload dataset` button. `app/views/upload.py` holds the staging flow. Every signed-in user can stage a file. Replace and activate stay admin-only.
+- Admin is administrator-only. `app/views/admin.py` checks `current_account().is_admin` and returns an access message for every other user. The old viewer `admin_authenticated` password gate is gone.
+- Power BI page. `app/views/powerbi.py` embeds `Settings.powerbi_report_url` when it is set. Otherwise it offers a `project_dashboard.pbix` download and five native preview tabs. `.env.example` has `POWERBI_REPORT_URL`.
+- Live charts. `plotly` is not a dependency. `app/shared.py` holds dark Altair helpers: `render_rate_bar` (rate plus Wilson whiskers), `render_dual_grain_chart`, `render_count_bar`, `render_correlation_chart`, `render_importance_chart`, `render_recall_chart`, `render_calibration_chart`, `render_metric_comparison_chart`, and `render_score_histogram`. Streamlit 1.67 bundles `altair 6.3.0`.
+- Anti-clipping CSS. Metric labels and values wrap with `overflow-wrap: anywhere` and `clamp()` sizing. Buttons, chips, tabs, alerts, and dataframes wrap or scroll. The `.cl-table` styles remain for HTML tables.
+- No "Phase" string remains in `app/`.
+
 ### In progress
 
 - Phase 6 PBIX. `PowerBI/project_dashboard.pbix` is present (706 KB). It has a `DataModel` and five report pages: Overview, Providers and segments, Usage and tenure, Model performance, and Churn predictions. It is not verified in Power BI Desktop, and the parity export check is pending. Power BI Desktop does not run in this WSL environment.

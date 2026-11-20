@@ -1,10 +1,18 @@
-"""Model performance page: fixed Phase 3 evidence and threshold policies."""
+"""Model performance page: fixed baseline evidence and threshold policies."""
 
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from shared import load_active_summary, page_header, render_notebook_charts, section_header
+from shared import (
+    load_active_summary,
+    page_header,
+    render_calibration_chart,
+    render_importance_chart,
+    render_metric_comparison_chart,
+    render_recall_chart,
+    section_header,
+)
 
 from cronus.modeling.serving import (
     CALIBRATION_BINS,
@@ -31,13 +39,13 @@ def render() -> None:
 
     page_header(
         "Model performance",
-        "Fixed Phase 3 holdout evidence for the current-relationship churn model.",
+        "Fixed baseline holdout evidence for the current-relationship churn model.",
         summary,
         chips=("Fixed evidence", "Holdout"),
     )
 
     st.info(
-        "The figures on this page come from the Phase 3 baseline snapshot. "
+        "The figures on this page come from the baseline snapshot. "
         "The app refits the same final model on the active current frame for scoring. "
         "It does not retune the model, change the features, or reselect a threshold."
     )
@@ -118,6 +126,24 @@ def render() -> None:
         f"ROC-AUC {roc_interval}, Brier {brier_interval}."
     )
 
+    render_metric_comparison_chart(
+        [
+            {"Metric": "PR-AUC", "Source": "Cross-validation", "Value": MODEL_CARD.cv_pr_auc},
+            {"Metric": "PR-AUC", "Source": "Holdout", "Value": MODEL_CARD.holdout_pr_auc},
+            {"Metric": "PR-AUC", "Source": "Temporal", "Value": TEMPORAL_CHECK.pr_auc},
+            {"Metric": "ROC-AUC", "Source": "Cross-validation", "Value": MODEL_CARD.cv_roc_auc},
+            {"Metric": "ROC-AUC", "Source": "Holdout", "Value": MODEL_CARD.holdout_roc_auc},
+            {"Metric": "ROC-AUC", "Source": "Temporal", "Value": TEMPORAL_CHECK.roc_auc},
+            {"Metric": "Brier", "Source": "Cross-validation", "Value": MODEL_CARD.cv_brier},
+            {"Metric": "Brier", "Source": "Holdout", "Value": MODEL_CARD.holdout_brier},
+            {"Metric": "Brier", "Source": "Temporal", "Value": TEMPORAL_CHECK.brier},
+        ]
+    )
+    st.caption(
+        "Bars group the three evidence sources. Higher is better for PR-AUC and "
+        "ROC-AUC. Lower is better for Brier."
+    )
+
     section_header("Threshold policies")
     policy_frame = pd.DataFrame(
         [
@@ -144,7 +170,7 @@ def render() -> None:
         },
     )
     st.caption(
-        "Precision, recall, and F1 come from the Phase 3 holdout at the threshold "
+        "Precision, recall, and F1 come from the holdout at the threshold "
         "shown in the same row. The default policy is max-F1."
     )
 
@@ -187,10 +213,7 @@ def render() -> None:
         PERMUTATION_IMPORTANCE,
         columns=["Feature", "Mean drop in PR-AUC", "Std"],
     )
-    st.bar_chart(
-        importance.set_index("Feature")[["Mean drop in PR-AUC"]],
-        height=360,
-    )
+    render_importance_chart(importance)
     st.dataframe(
         importance,
         hide_index=True,
@@ -209,18 +232,15 @@ def render() -> None:
     section_header(f"Subgroup recall at threshold {THRESHOLD:.4f}")
     subgroup = pd.DataFrame(SUBGROUP_RECALL, columns=["Segment", "Recall"])
     subgroup["Recall %"] = (subgroup["Recall"] * 100).round(2)
+    render_recall_chart(subgroup, threshold=THRESHOLD)
     st.dataframe(
         subgroup[["Segment", "Recall %"]],
         hide_index=True,
         width="stretch",
         column_config={"Recall %": st.column_config.NumberColumn(format="%.2f")},
     )
-    st.bar_chart(
-        subgroup.set_index("Segment")[["Recall %"]],
-        height=300,
-    )
     st.caption(
-        "Recall is computed on the Phase 3 holdout at the threshold shown above. "
+        "Recall is computed on the holdout at the threshold shown above. "
         "Several segments have few churn events, so these values have wide "
         "uncertainty. Use them to plan review capacity."
     )
@@ -232,6 +252,8 @@ def render() -> None:
     )
     calibration["Mean predicted %"] = (calibration["Mean predicted"] * 100).round(2)
     calibration["Observed rate %"] = (calibration["Observed rate"] * 100).round(2)
+
+    render_calibration_chart(calibration)
     st.dataframe(
         calibration[["N", "Mean predicted %", "Observed rate %", "Gap"]],
         hide_index=True,
@@ -277,32 +299,4 @@ def render() -> None:
         "The model does not predict an individual customer's fate. "
         "It does not estimate a causal effect. The threshold must travel "
         "with every score and export."
-    )
-
-    render_notebook_charts(
-        "model performance",
-        [
-            "modeling/modeling_01.png",
-            "modeling/modeling_02.png",
-            "modeling/modeling_03.png",
-            "modeling/modeling_04.png",
-            "modeling/modeling_05.png",
-            "modeling/modeling_06.png",
-            "modeling/modeling_07.png",
-            "modeling/modeling_08.png",
-            "modeling/modeling_09.png",
-            "modeling/modeling_10.png",
-        ],
-        [
-            "Model comparison: PR-AUC and ROC-AUC",
-            "Precision-recall curves",
-            "ROC curves",
-            "Permutation feature importance",
-            "Permutation importance by feature group",
-            "Subgroup recall by provider",
-            "Calibration plot",
-            "Temporal check: PR-AUC over time",
-            "Temporal check: threshold selection",
-            "Confusion matrix at default vs selected threshold",
-        ],
     )

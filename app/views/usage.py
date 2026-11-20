@@ -8,9 +8,9 @@ from shared import (
     active_summary_state,
     current_frame_for,
     page_header,
+    render_correlation_chart,
     render_current_filters,
     render_empty_dataset,
-    render_notebook_charts,
     render_rate_bar,
     render_rate_table,
     render_usage_table,
@@ -157,33 +157,8 @@ def render() -> None:
             }
         )
         st.dataframe(display, hide_index=True, width="stretch")
-        st.bar_chart(
-            correlation.set_index("feature")[["correlation"]].rename(
-                columns={"correlation": "Spearman rho"}
-            ),
-            height=320,
-        )
+        render_correlation_chart(correlation)
         st.caption(
             "Spearman rho measures rank association with current churn in the "
             "filtered frame. It is not a causal effect."
         )
-
-    render_notebook_charts(
-        "usage and tenure",
-        [
-            "analysis/analysis_03.png",
-            "analysis/analysis_07.png",
-            "analysis/analysis_08.png",
-            "analysis/analysis_09.png",
-            "analysis/analysis_10.png",
-            "analysis/analysis_11.png",
-        ],
-        [
-            "Age, salary, calls, SMS, data distributions",
-            "Tenure and churn status distributions",
-            "Churn rate by usage quartiles (calls, SMS, data)",
-            "Spearman correlations with churn",
-            "Quarterly churn trends",
-            "Registration year vs churn",
-        ],
-    )

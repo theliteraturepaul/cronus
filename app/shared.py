@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -163,16 +164,13 @@ def sign_in_session(account: AccountInfo) -> None:
 
 
 def sign_out_session() -> None:
-    """Clear the account, the admin gate, and any pending lock state."""
+    """Clear the account and any pending lock state."""
 
     for key in (
         "account",
         "signed_in_at",
-        "admin_authenticated",
         "account_failed_attempts",
         "account_lock_until",
-        "admin_failed_attempts",
-        "admin_lock_until",
     ):
         st.session_state.pop(key, None)
 
@@ -190,7 +188,6 @@ def render_guest_sidebar() -> None:
     )
     st.sidebar.info("Sign in to open the dashboard.")
     st.sidebar.caption("Accounts are local to this application. No verification email is sent.")
-    render_appearance_control()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -466,19 +463,6 @@ def seed_admin_account() -> None:
         logger.warning("Admin seed unavailable: %s", exc)
 
 
-_LIGHT_VARS = """
-    --cl-bg: #FFFFFF;
-    --cl-bg-soft: #F8FAFC;
-    --cl-surface: #FFFFFF;
-    --cl-surface-2: #F1F5F9;
-    --cl-text: #0F172A;
-    --cl-muted: #475569;
-    --cl-border: #E2E8F0;
-    --cl-primary: #0F766E;
-    --cl-primary-soft: #CCFBF1;
-    --cl-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-"""
-
 _DARK_VARS = """
     --cl-bg: #0B1220;
     --cl-bg-soft: #0F1A2B;
@@ -493,19 +477,8 @@ _DARK_VARS = """
 """
 
 
-def _theme_css(theme: str) -> str:
-    normalized = theme.strip().lower()
-    text_force = ""
-    if normalized == "dark":
-        variables = f":root {{{_DARK_VARS}}}"
-        text_force = "p, span, label, li, dd, dt, td, th { color: var(--cl-text) !important; }"
-    elif normalized == "light":
-        variables = f":root {{{_LIGHT_VARS}}}"
-        text_force = "p, span, label, li, dd, dt, td, th { color: var(--cl-text) !important; }"
-    else:
-        variables = (
-            f":root {{{_LIGHT_VARS}}}@media (prefers-color-scheme: dark) {{:root {{{_DARK_VARS}}}}}"
-        )
+def _theme_css() -> str:
+    variables = f":root {{ color-scheme: dark; {_DARK_VARS}}}"
 
     return f"""
     <style>
@@ -522,9 +495,12 @@ def _theme_css(theme: str) -> str:
         background-color: var(--cl-surface-2) !important;
         border-right: 1px solid var(--cl-border);
     }}
-    [data-testid="stSidebar"] * {{ color: var(--cl-text); }}
+    [data-testid="stSidebar"] * {{
+        color: var(--cl-text);
+        overflow-wrap: break-word;
+    }}
     h1, h2, h3, h4, h5, h6 {{ color: var(--cl-text) !important; letter-spacing: -0.015em; }}
-    {text_force}
+    p, span, label, li, dd, dt, td, th {{ color: var(--cl-text) !important; }}
     [data-testid="stCaptionContainer"], .stCaption {{ color: var(--cl-muted) !important; }}
     hr {{ border-color: var(--cl-border) !important; }}
     [data-testid="stMetric"] {{
@@ -533,13 +509,33 @@ def _theme_css(theme: str) -> str:
         border-radius: 14px;
         padding: 14px 16px;
         box-shadow: var(--cl-shadow);
+        height: 100%;
+        min-width: 0;
+        overflow: visible !important;
     }}
-    [data-testid="stMetricLabel"] p {{
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricLabel"] * {{
         color: var(--cl-muted) !important;
-        font-size: 0.8rem;
+        font-size: 0.8rem !important;
         letter-spacing: 0.02em;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        line-height: 1.25 !important;
     }}
-    [data-testid="stMetricValue"] {{ color: var(--cl-text) !important; }}
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricValue"] * {{
+        color: var(--cl-text) !important;
+        font-size: clamp(1.1rem, 1.75vw, 1.65rem) !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        line-height: 1.22 !important;
+    }}
     [data-testid="stExpander"] details {{
         background: var(--cl-surface);
         border: 1px solid var(--cl-border);
@@ -565,7 +561,11 @@ def _theme_css(theme: str) -> str:
         background-color: var(--cl-surface) !important;
     }}
     li[role="option"] {{ color: var(--cl-text) !important; }}
-    [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid var(--cl-border); }}
+    [data-baseweb="tab-list"] {{
+        gap: 4px;
+        border-bottom: 1px solid var(--cl-border);
+        flex-wrap: wrap;
+    }}
     [data-baseweb="tab"] {{ color: var(--cl-muted); }}
     [data-baseweb="tab"][aria-selected="true"] {{ color: var(--cl-primary); }}
     [data-testid="stDataFrame"] {{
@@ -585,6 +585,49 @@ def _theme_css(theme: str) -> str:
         border-radius: 12px;
         overflow: hidden;
     }}
+    [data-testid="stDataFrame"] div[data-testid="stTable"] {{
+        overflow-x: auto;
+    }}
+    .cl-table-wrap {{
+        width: 100%;
+        overflow-x: auto;
+        border: 1px solid var(--cl-border);
+        border-radius: 12px;
+        background: var(--cl-surface);
+        margin-bottom: 0.5rem;
+    }}
+    .cl-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+        line-height: 1.4;
+    }}
+    .cl-table th {{
+        background: var(--cl-surface-2);
+        color: var(--cl-muted) !important;
+        font-weight: 600;
+        text-align: left;
+        padding: 0.6rem 0.85rem;
+        border-bottom: 1px solid var(--cl-border);
+        white-space: normal;
+    }}
+    .cl-table td {{
+        color: var(--cl-text) !important;
+        padding: 0.55rem 0.85rem;
+        border-bottom: 1px solid var(--cl-border);
+        white-space: normal;
+        overflow-wrap: break-word;
+        vertical-align: top;
+    }}
+    .cl-table tr:last-child td {{
+        border-bottom: none;
+    }}
+    .cl-table th.cl-num,
+    .cl-table td.cl-num {{
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }}
     [data-testid="stForm"] {{
         background: var(--cl-surface);
         border: 1px solid var(--cl-border);
@@ -595,6 +638,11 @@ def _theme_css(theme: str) -> str:
         border-radius: 10px;
         border-color: var(--cl-border);
         color: var(--cl-text);
+        white-space: normal !important;
+        height: auto !important;
+        min-height: 2.4rem;
+        padding-top: 0.45rem;
+        padding-bottom: 0.45rem;
     }}
     [data-testid="stBaseButton-primary"] {{
         background-color: var(--cl-primary) !important;
@@ -613,6 +661,7 @@ def _theme_css(theme: str) -> str:
         border-radius: 8px;
     }}
     [data-testid="stAlert"] {{ border-radius: 12px; }}
+    [data-testid="stAlert"] * {{ overflow-wrap: anywhere; }}
     .block-container {{
         padding-top: 2.4rem;
         padding-bottom: 3.5rem;
@@ -651,6 +700,8 @@ def _theme_css(theme: str) -> str:
         letter-spacing: 0.04em;
         padding: 0.22rem 0.6rem;
         margin-right: 0.35rem;
+        margin-bottom: 0.2rem;
+        white-space: normal;
     }}
     .cl-hero-meta {{
         color: var(--cl-muted);
@@ -679,6 +730,7 @@ def _theme_css(theme: str) -> str:
         font-size: 0.78rem;
         font-weight: 800;
         letter-spacing: 0.02em;
+        flex-shrink: 0;
     }}
     .cl-brand strong {{ font-size: 1.02rem; letter-spacing: -0.01em; }}
     .cl-brand-sub {{ color: var(--cl-muted) !important; font-size: 0.74rem; }}
@@ -729,37 +781,17 @@ def _theme_css(theme: str) -> str:
         border-radius: 12px;
         background: var(--cl-surface);
     }}
+    [data-testid="stVegaLiteChart"] {{
+        width: 100%;
+    }}
     </style>
     """
 
 
-THEME_OPTIONS = ["Light", "Dark", "System"]
-
-
 def render_theme() -> None:
-    """Apply the selected palette. Call once per run, before navigation."""
+    """Apply the dark palette. Call once per run, before navigation."""
 
-    if st.session_state.get("ui_theme") not in THEME_OPTIONS:
-        st.session_state["ui_theme"] = "System"
-    st.markdown(_theme_css(st.session_state["ui_theme"]), unsafe_allow_html=True)
-
-
-def render_appearance_control() -> None:
-    """Render the sidebar appearance control. Call once per run."""
-
-    st.sidebar.divider()
-    st.sidebar.caption("Appearance")
-    selected = st.sidebar.segmented_control(
-        "Appearance",
-        options=THEME_OPTIONS,
-        key="ui_theme",
-        required=True,
-        label_visibility="collapsed",
-        help="Light or dark palette. System follows your device setting.",
-    )
-    if selected is None:
-        st.session_state["ui_theme"] = "System"
-        st.rerun()
+    st.markdown(_theme_css(), unsafe_allow_html=True)
 
 
 def render_sidebar() -> None:
@@ -819,20 +851,14 @@ def render_sidebar() -> None:
     st.sidebar.divider()
     if account is not None and account.is_admin:
         st.sidebar.success("Admin tools: unlocked")
-    elif st.session_state.get("admin_authenticated"):
-        st.sidebar.success("Admin: signed in")
-        if st.sidebar.button("Sign out of admin", width="stretch", key="admin-signout"):
-            st.session_state.pop("admin_authenticated", None)
-            st.rerun()
     else:
-        st.sidebar.caption("Admin: locked")
+        st.sidebar.caption("Admin: administrator only")
 
     st.sidebar.divider()
     st.sidebar.caption(
         "Relationship churn covers all history. Current customer churn covers "
         "only the latest relationship per customer."
     )
-    render_appearance_control()
 
 
 def hero(
@@ -1126,16 +1152,390 @@ def render_rate_table(
         st.caption(caption)
 
 
+CHART_PRIMARY = "#2DD4BF"
+CHART_ACCENT = "#F97316"
+CHART_MUTED = "#94A3B8"
+CHART_TEXT = "#E2E8F0"
+CHART_GRID = "#334155"
+CHART_FONT = "'Inter', 'Segoe UI', system-ui, sans-serif"
+
+
+def _styled_chart(chart: alt.TopLevelMixin, *, height: int) -> alt.TopLevelMixin:
+    """Apply the dark palette and compact spacing to one chart."""
+
+    return (
+        chart.properties(height=height, background="transparent")
+        .configure_view(strokeWidth=0)
+        .configure_axis(
+            labelColor="#CBD5E1",
+            titleColor=CHART_MUTED,
+            gridColor=CHART_GRID,
+            domainColor="#475569",
+            tickColor="#475569",
+            labelFont=CHART_FONT,
+            titleFont=CHART_FONT,
+            labelFontSize=12,
+            titleFontSize=12,
+            labelLimit=260,
+        )
+        .configure_legend(
+            labelColor="#CBD5E1",
+            titleColor=CHART_MUTED,
+            labelFont=CHART_FONT,
+            titleFont=CHART_FONT,
+        )
+    )
+
+
+def _render_chart(chart: alt.TopLevelMixin, *, height: int) -> None:
+    st.altair_chart(_styled_chart(chart, height=height), width="stretch")
+
+
 def render_rate_bar(
     table: pd.DataFrame,
     *,
     title: str | None = None,
     height: int = 320,
 ) -> None:
+    """Render a horizontal churn-rate bar chart with Wilson interval whiskers."""
+
+    if table.empty:
+        st.info("No rows to chart.")
+        return
     if title:
         st.markdown(f"**{title}**")
-    chart = table.set_index("segment")[["rate"]].mul(100).rename(columns={"rate": "Rate %"})
-    st.bar_chart(chart, height=height)
+
+    display = pd.DataFrame(
+        {
+            "Segment": table["segment"].astype(str),
+            "Rate %": (table["rate"] * 100).round(2),
+            "CI low %": (table["ci_low"] * 100).round(2),
+            "CI high %": (table["ci_high"] * 100).round(2),
+            "N": table["n"].astype(int),
+            "Churned": table["churned"].astype(int),
+        }
+    ).sort_values("Rate %", ascending=True, kind="stable")
+
+    resolved_height = min(max(height, 26 * len(display) + 60), 1200)
+    base = alt.Chart(display).encode(
+        y=alt.Y("Segment:N", sort=None, title=None),
+    )
+    bars = base.mark_bar(cornerRadiusEnd=4, color=CHART_PRIMARY).encode(
+        x=alt.X("Rate %:Q", title="Churn rate %"),
+        tooltip=[
+            alt.Tooltip("Segment:N"),
+            alt.Tooltip("Rate %:Q", format=".2f"),
+            alt.Tooltip("CI low %:Q", format=".2f"),
+            alt.Tooltip("CI high %:Q", format=".2f"),
+            alt.Tooltip("Churned:Q"),
+            alt.Tooltip("N:Q"),
+        ],
+    )
+    whisker = base.mark_rule(strokeWidth=1.5, color=CHART_TEXT, opacity=0.75).encode(
+        x=alt.X("CI low %:Q"),
+        x2="CI high %:Q",
+    )
+    _render_chart(alt.layer(bars, whisker), height=resolved_height)
+
+
+def render_dual_grain_chart(
+    *,
+    relationship_count: int,
+    relationship_churned: int,
+    current_count: int,
+    current_churned: int,
+    height: int = 220,
+) -> None:
+    """Render the two churn rates side by side on one shared scale."""
+
+    rows = [
+        {
+            "Grain": "All relationships",
+            "Rate %": round(relationship_churned / relationship_count * 100, 2),
+            "Detail": f"{relationship_churned:,} of {relationship_count:,} relationships",
+        },
+        {
+            "Grain": "Current customers only",
+            "Rate %": round(current_churned / current_count * 100, 2),
+            "Detail": f"{current_churned:,} of {current_count:,} latest relationships",
+        },
+    ]
+    display = pd.DataFrame(rows)
+    chart = (
+        alt.Chart(display)
+        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        .encode(
+            x=alt.X("Grain:N", title=None, sort=None),
+            y=alt.Y("Rate %:Q", title="Churn rate %"),
+            tooltip=[
+                alt.Tooltip("Grain:N"),
+                alt.Tooltip("Rate %:Q", format=".2f"),
+                alt.Tooltip("Detail:N"),
+            ],
+        )
+        .encode(
+            color=alt.Color(
+                "Grain:N",
+                scale=alt.Scale(
+                    domain=["All relationships", "Current customers only"],
+                    range=[CHART_MUTED, CHART_PRIMARY],
+                ),
+                legend=None,
+            )
+        )
+    )
+    labels = chart.mark_text(dy=-10, fontSize=13).encode(
+        text=alt.Text("Rate %:Q", format=".2f"),
+        color=alt.value(CHART_TEXT),
+    )
+    _render_chart(chart + labels, height=height)
+
+
+def render_count_bar(
+    frame: pd.DataFrame,
+    *,
+    category: str,
+    value: str,
+    title: str | None = None,
+    height: int = 320,
+) -> None:
+    """Render a vertical bar chart for one count column."""
+
+    if frame.empty:
+        st.info("No rows to chart.")
+        return
+    if title:
+        st.markdown(f"**{title}**")
+    chart = (
+        alt.Chart(frame)
+        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, color=CHART_PRIMARY)
+        .encode(
+            x=alt.X(f"{category}:N", title=None, sort="-y"),
+            y=alt.Y(f"{value}:Q", title=value),
+            tooltip=[
+                alt.Tooltip(f"{category}:N"),
+                alt.Tooltip(f"{value}:Q", format=","),
+            ],
+        )
+    )
+    _render_chart(chart, height=height)
+
+
+def render_correlation_chart(
+    correlation: pd.DataFrame,
+    *,
+    height: int = 320,
+) -> None:
+    """Render Spearman correlations as horizontal bars around zero."""
+
+    display = pd.DataFrame(
+        {
+            "Feature": correlation["feature"].astype(str),
+            "Spearman rho": correlation["correlation"].round(4),
+        }
+    ).sort_values("Spearman rho", ascending=True, kind="stable")
+    bar = (
+        alt.Chart(display)
+        .mark_bar(cornerRadiusEnd=4)
+        .encode(
+            y=alt.Y("Feature:N", sort=None, title=None),
+            x=alt.X("Spearman rho:Q", title="Spearman rho"),
+            color=alt.condition(
+                alt.datum["Spearman rho"] >= 0,
+                alt.value(CHART_PRIMARY),
+                alt.value(CHART_ACCENT),
+            ),
+            tooltip=[
+                alt.Tooltip("Feature:N"),
+                alt.Tooltip("Spearman rho:Q", format=".4f"),
+            ],
+        )
+    )
+    zero = (
+        alt.Chart(pd.DataFrame({"x": [0.0]}))
+        .mark_rule(color=CHART_MUTED, strokeDash=[4, 3])
+        .encode(x="x:Q")
+    )
+    _render_chart(bar + zero, height=height)
+
+
+def render_importance_chart(
+    importance: pd.DataFrame,
+    *,
+    height: int = 360,
+) -> None:
+    """Render permutation importance with one standard deviation whiskers."""
+
+    display = pd.DataFrame(
+        {
+            "Feature": importance["Feature"].astype(str),
+            "Mean drop": importance["Mean drop in PR-AUC"].astype(float),
+            "Low": (importance["Mean drop in PR-AUC"] - importance["Std"]).astype(float),
+            "High": (importance["Mean drop in PR-AUC"] + importance["Std"]).astype(float),
+            "Std": importance["Std"].astype(float),
+        }
+    ).sort_values("Mean drop", ascending=True, kind="stable")
+    base = alt.Chart(display).encode(y=alt.Y("Feature:N", sort=None, title=None))
+    bars = base.mark_bar(cornerRadiusEnd=4, color=CHART_PRIMARY).encode(
+        x=alt.X("Mean drop:Q", title="Mean drop in PR-AUC"),
+        tooltip=[
+            alt.Tooltip("Feature:N"),
+            alt.Tooltip("Mean drop:Q", format=".4f"),
+            alt.Tooltip("Std:Q", format=".4f"),
+        ],
+    )
+    whisker = base.mark_rule(strokeWidth=1.5, color=CHART_TEXT, opacity=0.75).encode(
+        x=alt.X("Low:Q"),
+        x2="High:Q",
+    )
+    zero = (
+        alt.Chart(pd.DataFrame({"x": [0.0]}))
+        .mark_rule(color=CHART_MUTED, strokeDash=[4, 3])
+        .encode(x="x:Q")
+    )
+    _render_chart(alt.layer(bars, whisker) + zero, height=height)
+
+
+def render_recall_chart(
+    subgroup: pd.DataFrame,
+    *,
+    threshold: float,
+    height: int = 300,
+) -> None:
+    """Render subgroup recall as horizontal bars."""
+
+    display = pd.DataFrame(
+        {
+            "Segment": subgroup["Segment"].astype(str),
+            "Recall %": (subgroup["Recall"].astype(float) * 100).round(2),
+        }
+    ).sort_values("Recall %", ascending=True, kind="stable")
+    chart = (
+        alt.Chart(display)
+        .mark_bar(cornerRadiusEnd=4, color=CHART_PRIMARY)
+        .encode(
+            y=alt.Y("Segment:N", sort=None, title=None),
+            x=alt.X("Recall %:Q", title=f"Recall % at threshold {threshold:.4f}"),
+            tooltip=[
+                alt.Tooltip("Segment:N"),
+                alt.Tooltip("Recall %:Q", format=".2f"),
+            ],
+        )
+    )
+    _render_chart(chart, height=height)
+
+
+def render_calibration_chart(
+    calibration: pd.DataFrame,
+    *,
+    height: int = 360,
+) -> None:
+    """Render predicted probability against the observed rate."""
+
+    display = pd.DataFrame(
+        {
+            "Mean predicted %": (calibration["Mean predicted"].astype(float) * 100).round(2),
+            "Observed rate %": (calibration["Observed rate"].astype(float) * 100).round(2),
+            "N": calibration["N"].astype(int),
+        }
+    )
+    line = (
+        alt.Chart(display)
+        .mark_line(point=alt.OverlayMarkDef(size=70), color=CHART_PRIMARY, strokeWidth=3)
+        .encode(
+            x=alt.X("Mean predicted %:Q", title="Mean predicted probability %"),
+            y=alt.Y("Observed rate %:Q", title="Observed rate %"),
+            tooltip=[
+                alt.Tooltip("Mean predicted %:Q", format=".2f"),
+                alt.Tooltip("Observed rate %:Q", format=".2f"),
+                alt.Tooltip("N:Q"),
+            ],
+        )
+    )
+    identity = (
+        alt.Chart(pd.DataFrame({"x": [0, 100], "y": [0, 100]}))
+        .mark_line(color=CHART_MUTED, strokeDash=[6, 4], strokeWidth=2)
+        .encode(x="x:Q", y="y:Q")
+    )
+    _render_chart(line + identity, height=height)
+
+
+def render_metric_comparison_chart(
+    rows: list[dict[str, float | str]],
+    *,
+    height: int = 320,
+) -> None:
+    """Render grouped metric values across evidence sources."""
+
+    display = pd.DataFrame(rows)
+    if display.empty:
+        st.info("No rows to chart.")
+        return
+    chart = (
+        alt.Chart(display)
+        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        .encode(
+            x=alt.X("Metric:N", title=None, sort=None),
+            xOffset=alt.XOffset("Source:N", sort=None),
+            y=alt.Y("Value:Q", title="Score"),
+            color=alt.Color(
+                "Source:N",
+                scale=alt.Scale(
+                    domain=["Cross-validation", "Holdout", "Temporal"],
+                    range=[CHART_MUTED, CHART_PRIMARY, CHART_ACCENT],
+                ),
+                legend=alt.Legend(orient="top", title=None),
+            ),
+            tooltip=[
+                alt.Tooltip("Metric:N"),
+                alt.Tooltip("Source:N"),
+                alt.Tooltip("Value:Q", format=".4f"),
+            ],
+        )
+    )
+    _render_chart(chart, height=height)
+
+
+def render_score_histogram(
+    scored: pd.DataFrame,
+    *,
+    threshold: float,
+    height: int = 360,
+) -> None:
+    """Render the score distribution with flagged relationships highlighted."""
+
+    display = pd.DataFrame(
+        {
+            "Score %": (scored["churn_probability"].astype(float) * 100).round(2),
+        }
+    )
+    flagged = display.loc[scored["predicted_churn"].astype(bool).to_numpy()]
+    bins = alt.Bin(maxbins=40)
+
+    all_bars = (
+        alt.Chart(display)
+        .mark_bar(opacity=0.45, color=CHART_MUTED)
+        .encode(
+            x=alt.X("Score %:Q", bin=bins, title="Churn probability %"),
+            y=alt.Y("count():Q", title="Relationships"),
+            tooltip=[alt.Tooltip("count():Q", title="All scores")],
+        )
+    )
+    flagged_bars = (
+        alt.Chart(flagged)
+        .mark_bar(color=CHART_PRIMARY)
+        .encode(
+            x=alt.X("Score %:Q", bin=bins),
+            y=alt.Y("count():Q"),
+            tooltip=[alt.Tooltip("count():Q", title="Flagged")],
+        )
+    )
+    threshold_rule = (
+        alt.Chart(pd.DataFrame({"x": [threshold * 100]}))
+        .mark_rule(color=CHART_ACCENT, strokeDash=[5, 3], strokeWidth=2)
+        .encode(x="x:Q")
+    )
+    _render_chart(all_bars + flagged_bars + threshold_rule, height=height)
 
 
 def render_current_filters(
