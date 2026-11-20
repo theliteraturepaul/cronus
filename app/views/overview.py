@@ -9,6 +9,7 @@ from shared import (
     page_header,
     render_dual_grain_chart,
     render_empty_dataset,
+    render_notebook_charts,
     render_profile,
     render_rate_bar,
     section_header,
@@ -167,4 +168,36 @@ def render() -> None:
     st.caption(
         "Comparisons on this dashboard are descriptive. The snapshot does not "
         "identify causes of churn."
+    )
+
+    render_notebook_charts(
+        "Analysis",
+        [
+            "analysis_01.png",
+            "analysis_02.png",
+            "analysis_03.png",
+            "analysis_04.png",
+            "analysis_05.png",
+            "analysis_06.png",
+            "analysis_07.png",
+            "analysis_08.png",
+            "analysis_09.png",
+            "analysis_10.png",
+            "analysis_11.png",
+            "analysis_12.png",
+        ],
+        [
+            "Grain and composition of the canonical snapshot",
+            "Dual churn measures and the historical construction",
+            "Distributions of current relationship attributes (n = 8,860)",
+            "Provider differences at both grains",
+            "Age and dependents at both grains",
+            "Current customer churn by state/UT (n ≥ 100 current relationships)",
+            "Tenure and current customer churn",
+            "Current churn by usage and salary quartile (n = 8,860)",
+            "Usage distributions by current churn status",
+            "Spearman correlations on current relationships",
+            "Registration volume and current churn by cohort",
+            "Current churn by provider and calls quartile",
+        ],
     )

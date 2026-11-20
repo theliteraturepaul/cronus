@@ -9,6 +9,7 @@ from shared import (
     page_header,
     render_count_bar,
     render_empty_dataset,
+    render_notebook_charts,
     render_score_histogram,
     scores_for,
     scoring_model_for,
@@ -120,8 +121,8 @@ def render() -> None:
     section_header("Score distribution", "Live computation from the active dataset.")
     render_score_histogram(scored, threshold=policy.threshold)
     st.caption(
-        "Grey bars show all scores. Teal bars show flagged relationships. "
-        f"The dashed line marks threshold {policy.threshold:.4f}."
+        "Grey bars show all scores. Teal bars show relationships flagged at "
+        f"threshold {policy.threshold:.4f}."
     )
 
     section_header(
@@ -297,4 +298,24 @@ def render() -> None:
         "Historical relationships are excluded. Scores rank relationships for "
         "review. They do not predict an individual customer's fate and do not "
         "estimate a causal effect."
+    )
+
+    render_notebook_charts(
+        "Modeling",
+        [
+            "modeling_03.png",
+            "modeling_04.png",
+            "modeling_05.png",
+            "modeling_06.png",
+            "modeling_07.png",
+            "modeling_08.png",
+        ],
+        [
+            "Threshold tradeoff on out-of-fold training predictions",
+            "Precision-recall curve on the holdout split",
+            "ROC curve on the holdout split",
+            "Confusion matrix at selected threshold",
+            "Calibration on the holdout split",
+            "Permutation importance on the holdout split",
+        ],
     )

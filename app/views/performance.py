@@ -10,6 +10,7 @@ from shared import (
     render_calibration_chart,
     render_importance_chart,
     render_metric_comparison_chart,
+    render_notebook_charts,
     render_recall_chart,
     section_header,
 )
@@ -299,4 +300,32 @@ def render() -> None:
         "The model does not predict an individual customer's fate. "
         "It does not estimate a causal effect. The threshold must travel "
         "with every score and export."
+    )
+
+    render_notebook_charts(
+        "Modeling",
+        [
+            "modeling_01.png",
+            "modeling_02.png",
+            "modeling_03.png",
+            "modeling_04.png",
+            "modeling_05.png",
+            "modeling_06.png",
+            "modeling_07.png",
+            "modeling_08.png",
+            "modeling_09.png",
+            "modeling_10.png",
+        ],
+        [
+            "Current relationships by outcome",
+            "Fold-level PR-AUC on the training split",
+            "Threshold tradeoff on out-of-fold training predictions",
+            "Precision-recall curve on the holdout split",
+            "ROC curve on the holdout split",
+            "Confusion matrix at selected threshold",
+            "Calibration on the holdout split",
+            "Permutation importance on the holdout split",
+            "Recall by subgroup at selected threshold",
+            "Precision-recall curves: random and temporal holdouts",
+        ],
     )

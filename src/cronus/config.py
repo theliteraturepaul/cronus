@@ -81,7 +81,6 @@ class Settings(BaseSettings):
     visitor_hash_salt: SecretStr | None = None
     allow_signup: bool = True
     session_max_hours: int = Field(default=12, gt=0)
-    powerbi_report_url: str | None = None
 
     @field_validator("database_url")
     @classmethod
@@ -113,13 +112,6 @@ class Settings(BaseSettings):
     def _normalise_admin_text(cls, value: object) -> object:
         if isinstance(value, str):
             return value.strip()
-        return value
-
-    @field_validator("powerbi_report_url", mode="before")
-    @classmethod
-    def _normalise_optional_text(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip() or None
         return value
 
     @field_validator("log_level")

@@ -11,6 +11,7 @@ from shared import (
     render_correlation_chart,
     render_current_filters,
     render_empty_dataset,
+    render_notebook_charts,
     render_rate_bar,
     render_rate_table,
     render_usage_table,
@@ -162,3 +163,23 @@ def render() -> None:
             "Spearman rho measures rank association with current churn in the "
             "filtered frame. It is not a causal effect."
         )
+
+    render_notebook_charts(
+        "Analysis",
+        [
+            "analysis_07.png",
+            "analysis_08.png",
+            "analysis_09.png",
+            "analysis_10.png",
+            "analysis_11.png",
+            "analysis_12.png",
+        ],
+        [
+            "Tenure and current customer churn",
+            "Current churn by usage and salary quartile (n = 8,860)",
+            "Usage distributions by current churn status",
+            "Spearman correlations on current relationships",
+            "Registration volume and current churn by cohort",
+            "Current churn by provider and calls quartile",
+        ],
+    )

@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.16",
     "numpy>=2.0",
     "pandas>=2.2",
+    "plotly>=6.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",

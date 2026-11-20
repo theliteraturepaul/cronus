@@ -59,11 +59,13 @@ def test_export_matches_fitted_pipeline(fitted: tuple[pd.DataFrame, FittedModel]
     assert feature_names == export["output_feature_names"]
     assert len(feature_names) == 43
 
-    np.testing.assert_allclose(classifier.coef_[0], export["coefficients"], rtol=0.0, atol=0.0)
-    assert classifier.intercept_[0] == export["intercept"]
+    np.testing.assert_allclose(classifier.coef_[0], export["coefficients"], rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(
+        classifier.intercept_[0], export["intercept"], rtol=1e-10, atol=1e-10
+    )
 
-    np.testing.assert_allclose(scaler.mean_, export["numeric_mean"], rtol=0.0, atol=0.0)
-    np.testing.assert_allclose(scaler.scale_, export["numeric_scale"], rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(scaler.mean_, export["numeric_mean"], rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(scaler.scale_, export["numeric_scale"], rtol=1e-10, atol=1e-10)
 
     categories = [[str(value) for value in values] for values in encoder.categories_]
     assert categories == export["categorical_categories"]

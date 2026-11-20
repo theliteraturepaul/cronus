@@ -128,7 +128,7 @@ def show_flash() -> None:
         st.success(message)
 
 
-MAX_VISITOR_LOG_ENTRIES = 50
+PRESENCE_INTERVAL_SECONDS = 60
 
 
 def current_account() -> AccountInfo | None:
@@ -190,14 +190,20 @@ def render_guest_sidebar() -> None:
     st.sidebar.caption("Accounts are local to this application. No verification email is sent.")
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=45, show_spinner=False)
 def visitor_snapshot() -> VisitorSnapshot | None:
     """Return the cached visitor counts, or None when the read fails."""
 
-    since = datetime.now(UTC) - timedelta(days=7)
+    now = datetime.now(UTC)
+    since = now - timedelta(days=7)
+    active_since = now - timedelta(minutes=5)
     try:
         with session_scope() as session:
-            return read_visitor_snapshot(session, since=since)
+            return read_visitor_snapshot(
+                session,
+                since=since,
+                active_since=active_since,
+            )
     except Exception as exc:
         logger.warning("Visitor counts unavailable: %s", exc)
         return None
@@ -208,7 +214,12 @@ def record_current_visit(
     *,
     settings: Settings | None = None,
 ) -> None:
-    """Record at most one page view per session and page in 30 minutes."""
+    """Record one visit per sign-in session and a presence event each minute.
+
+    Total Visit counts one login session. A page change inside the same session
+    does not add a visit. The presence event keeps the 5-minute active-session
+    count current without a write on every Streamlit rerun.
+    """
 
     resolved = settings
     if resolved is None:
@@ -225,19 +236,11 @@ def record_current_visit(
     page_path = _current_page_path()
     now = time.time()
 
-    log = st.session_state.get("visitor_log")
-    if not isinstance(log, dict):
-        log = {}
-    log_key = f"{session_id}:{page_path}"
-    if not should_record(log.get(log_key), now):
+    recorded = st.session_state.get("visitor_visit_recorded") is True
+    last_seen = st.session_state.get("visitor_last_seen")
+    skip = recorded and isinstance(last_seen, (int, float))
+    if skip and not should_record(float(last_seen), now, window_seconds=PRESENCE_INTERVAL_SECONDS):
         return
-
-    log[log_key] = now
-    if len(log) > MAX_VISITOR_LOG_ENTRIES:
-        stale = sorted(log, key=log.get)[: len(log) - MAX_VISITOR_LOG_ENTRIES]
-        for item in stale:
-            log.pop(item, None)
-    st.session_state["visitor_log"] = log
 
     visitor_key = hash_visitor_key(
         ip=_client_ip(),
@@ -257,7 +260,10 @@ def record_current_visit(
             )
     except Exception as exc:
         logger.warning("Visitor write failed: %s", exc)
-        st.session_state["visitor_log"].pop(log_key, None)
+        return
+
+    st.session_state["visitor_visit_recorded"] = True
+    st.session_state["visitor_last_seen"] = now
 
 
 def render_visitor_banner(account: AccountInfo | None = None) -> None:
@@ -1102,13 +1108,22 @@ def render_notebook_charts(section: str, chart_filenames: list[str], captions: l
         "Static figures from the analysis notebook. Open the panel to review them.",
     )
     expander_title = f"Show {len(chart_filenames)} charts"
-    root = Path(__file__).resolve().parent / "assets"
+    assets = Path(__file__).resolve().parent / "assets"
+    folder = "modeling" if section.lower() in {"modeling", "model performance"} else "analysis"
+    root = assets / folder
     with st.expander(expander_title, expanded=False):
         cols = st.columns(2)
         for i, (fname, caption) in enumerate(zip(chart_filenames, captions, strict=False)):
             with cols[i % 2]:
+                image_path = root / fname
+                if not image_path.is_file():
+                    image_path = assets / fname
+                if not image_path.is_file():
+                    st.warning(f"Figure unavailable: {caption}")
+                    continue
+                # Bytes avoid Streamlit Cloud MediaFileStorageError on local paths.
                 st.image(
-                    str(root / fname),
+                    image_path.read_bytes(),
                     caption=f"{i + 1}. {caption}",
                     width="stretch",
                 )
@@ -1152,6 +1167,7 @@ def render_rate_table(
         st.caption(caption)
 
 
+
 CHART_PRIMARY = "#2DD4BF"
 CHART_ACCENT = "#F97316"
 CHART_MUTED = "#94A3B8"
@@ -1170,8 +1186,8 @@ def _styled_chart(chart: alt.TopLevelMixin, *, height: int) -> alt.TopLevelMixin
             labelColor="#CBD5E1",
             titleColor=CHART_MUTED,
             gridColor=CHART_GRID,
-            domainColor="#475569",
-            tickColor="#475569",
+            domain=False,
+            ticks=False,
             labelFont=CHART_FONT,
             titleFont=CHART_FONT,
             labelFontSize=12,
@@ -1197,7 +1213,7 @@ def render_rate_bar(
     title: str | None = None,
     height: int = 320,
 ) -> None:
-    """Render a horizontal churn-rate bar chart with Wilson interval whiskers."""
+    """Render a horizontal churn-rate bar chart."""
 
     if table.empty:
         st.info("No rows to chart.")
@@ -1231,11 +1247,7 @@ def render_rate_bar(
             alt.Tooltip("N:Q"),
         ],
     )
-    whisker = base.mark_rule(strokeWidth=1.5, color=CHART_TEXT, opacity=0.75).encode(
-        x=alt.X("CI low %:Q"),
-        x2="CI high %:Q",
-    )
-    _render_chart(alt.layer(bars, whisker), height=resolved_height)
+    _render_chart(bars, height=resolved_height)
 
 
 def render_dual_grain_chart(
@@ -1351,12 +1363,7 @@ def render_correlation_chart(
             ],
         )
     )
-    zero = (
-        alt.Chart(pd.DataFrame({"x": [0.0]}))
-        .mark_rule(color=CHART_MUTED, strokeDash=[4, 3])
-        .encode(x="x:Q")
-    )
-    _render_chart(bar + zero, height=height)
+    _render_chart(bar, height=height)
 
 
 def render_importance_chart(
@@ -1364,36 +1371,29 @@ def render_importance_chart(
     *,
     height: int = 360,
 ) -> None:
-    """Render permutation importance with one standard deviation whiskers."""
+    """Render permutation importance as horizontal bars."""
 
     display = pd.DataFrame(
         {
             "Feature": importance["Feature"].astype(str),
             "Mean drop": importance["Mean drop in PR-AUC"].astype(float),
-            "Low": (importance["Mean drop in PR-AUC"] - importance["Std"]).astype(float),
-            "High": (importance["Mean drop in PR-AUC"] + importance["Std"]).astype(float),
             "Std": importance["Std"].astype(float),
         }
     ).sort_values("Mean drop", ascending=True, kind="stable")
-    base = alt.Chart(display).encode(y=alt.Y("Feature:N", sort=None, title=None))
-    bars = base.mark_bar(cornerRadiusEnd=4, color=CHART_PRIMARY).encode(
-        x=alt.X("Mean drop:Q", title="Mean drop in PR-AUC"),
-        tooltip=[
-            alt.Tooltip("Feature:N"),
-            alt.Tooltip("Mean drop:Q", format=".4f"),
-            alt.Tooltip("Std:Q", format=".4f"),
-        ],
+    bars = (
+        alt.Chart(display)
+        .mark_bar(cornerRadiusEnd=4, color=CHART_PRIMARY)
+        .encode(
+            y=alt.Y("Feature:N", sort=None, title=None),
+            x=alt.X("Mean drop:Q", title="Mean drop in PR-AUC"),
+            tooltip=[
+                alt.Tooltip("Feature:N"),
+                alt.Tooltip("Mean drop:Q", format=".4f"),
+                alt.Tooltip("Std:Q", format=".4f"),
+            ],
+        )
     )
-    whisker = base.mark_rule(strokeWidth=1.5, color=CHART_TEXT, opacity=0.75).encode(
-        x=alt.X("Low:Q"),
-        x2="High:Q",
-    )
-    zero = (
-        alt.Chart(pd.DataFrame({"x": [0.0]}))
-        .mark_rule(color=CHART_MUTED, strokeDash=[4, 3])
-        .encode(x="x:Q")
-    )
-    _render_chart(alt.layer(bars, whisker) + zero, height=height)
+    _render_chart(bars, height=height)
 
 
 def render_recall_chart(
@@ -1452,12 +1452,7 @@ def render_calibration_chart(
             ],
         )
     )
-    identity = (
-        alt.Chart(pd.DataFrame({"x": [0, 100], "y": [0, 100]}))
-        .mark_line(color=CHART_MUTED, strokeDash=[6, 4], strokeWidth=2)
-        .encode(x="x:Q", y="y:Q")
-    )
-    _render_chart(line + identity, height=height)
+    _render_chart(line, height=height)
 
 
 def render_metric_comparison_chart(
@@ -1530,12 +1525,7 @@ def render_score_histogram(
             tooltip=[alt.Tooltip("count():Q", title="Flagged")],
         )
     )
-    threshold_rule = (
-        alt.Chart(pd.DataFrame({"x": [threshold * 100]}))
-        .mark_rule(color=CHART_ACCENT, strokeDash=[5, 3], strokeWidth=2)
-        .encode(x="x:Q")
-    )
-    _render_chart(all_bars + flagged_bars + threshold_rule, height=height)
+    _render_chart(all_bars + flagged_bars, height=height)
 
 
 def render_current_filters(

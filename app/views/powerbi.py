@@ -1,4 +1,4 @@
-"""Power BI page: report access and a native preview of the five report pages."""
+"""Power BI page: PBIX download and a native preview of the five report pages."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from shared import (
 )
 
 from cronus.analytics import churn_rate_table, tenure_band_table, usage_quartile_table
-from cronus.config import get_settings
 from cronus.modeling.serving import (
     CALIBRATION_BINS,
     MODEL_CARD,
@@ -135,7 +134,7 @@ def render() -> None:
     summary, ok = active_summary_state()
     page_header(
         "Power BI dashboard",
-        "Open the Power BI report or review a native preview of its five pages.",
+        "Download the PBIX file or review a native preview of its five pages.",
         summary,
         chips=("Import mode", "Fixed baseline coefficients"),
     )
@@ -147,21 +146,10 @@ def render() -> None:
         "Model performance, and Churn predictions."
     )
 
+    _render_pbix_download()
+
     if not ok:
         return
-
-    settings = get_settings()
-    powerbi_url = settings.powerbi_report_url
-    if powerbi_url:
-        section_header("Published report", "Embedded from Power BI Service.")
-        st.components.v1.iframe(powerbi_url, height=800, scrolling=True)
-    else:
-        st.info(
-            "No `POWERBI_REPORT_URL` is set. Download the packaged report file, or set the "
-            "variable in `.env` or Streamlit secrets to embed a published report."
-        )
-        _render_pbix_download()
-
     if summary is None:
         st.divider()
         render_empty_dataset()
