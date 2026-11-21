@@ -43,13 +43,12 @@ production-readiness claim, and no fairness claim.
 
 | Deliverable | Location |
 | --- | --- |
-| Project documentation (PDF) | [`01_Project_Documentation.pdf`](01_Project_Documentation.pdf) |
+| Project documentation (PDF) | [`Docs/01_Project_Documentation.pdf`](Docs/01_Project_Documentation.pdf) |
 | Canonical dataset | [`Dataset/project_dataset.csv`](Dataset/project_dataset.csv) |
 | Exploratory analysis notebook | [`Python/analysis.ipynb`](Python/analysis.ipynb) |
 | Modeling and evaluation notebook | [`Python/modeling.ipynb`](Python/modeling.ipynb) |
 | Streamlit application | [`app/main.py`](app/main.py), live at <https://churn-lab.streamlit.app/> |
 | Power BI report | [`PowerBI/project_dashboard.pbix`](PowerBI/project_dashboard.pbix) |
-| Power BI build assets | [`PowerBI/`](PowerBI) (Power Query, DAX, build guide, model export) |
 | Service layer | [`src/cronus/`](src/cronus) |
 | Test suite | [`tests/`](tests) |
 | Continuous integration | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
@@ -126,19 +125,15 @@ deployment installs only what the application needs.
 
 ```text
 .
-├── 01_Project_Documentation.pdf   # submitted project report
+├── Docs/
+│   └── 01_Project_Documentation.pdf   # submitted project report
 ├── Dataset/
 │   └── project_dataset.csv        # canonical committed dataset
 ├── Python/
 │   ├── analysis.ipynb             # executed exploratory analysis
 │   └── modeling.ipynb             # executed modeling and evaluation
 ├── PowerBI/
-│   ├── project_dashboard.pbix     # five-page report
-│   ├── PowerQuery_M_Scoring.txt   # five Power Query queries for scoring
-│   ├── DAX_Measures.txt           # measures, columns, fixed evidence tables
-│   ├── PBIX_Build_Guide.md        # build steps for the five report pages
-│   ├── powerbi_model_export.json  # intercept, 43 coefficients, scaler
-│   └── verify_scores.py           # PBIX and Streamlit parity check
+│   └── project_dashboard.pbix     # five-page report
 ├── app/
 │   ├── main.py                    # navigation shell and page registration
 │   ├── shared.py                  # cached reads, sidebar, charts, UI helpers
@@ -904,16 +899,15 @@ scored CSV and does not call Python at view time.
 The Streamlit **Power BI dashboard** page offers a PBIX download and a native
 preview of the five report pages, rendered from the active dataset.
 
-### Files
+### File
 
 | File | Purpose |
 | --- | --- |
-| `PowerBI/PowerQuery_M_Scoring.txt` | Five queries: Config, ActiveDataset, CurrentRelationships, DateTable, ScoredRelationships |
-| `PowerBI/DAX_Measures.txt` | Calculated columns, measures, threshold selector, fixed evidence tables |
-| `PowerBI/PBIX_Build_Guide.md` | Step-by-step build guide for the five report pages |
-| `PowerBI/powerbi_model_export.json` | Model parameters: intercept, 43 coefficients, scaler, categories |
-| `PowerBI/verify_scores.py` | Build-time parity check against the Streamlit scores |
 | `PowerBI/project_dashboard.pbix` | Five-page report |
+
+The Power Query scripts, DAX measures, build guide, model export, and parity
+check script are not committed to this repository. They are available in the
+project archive if needed for rebuilding the report.
 
 ### Data model
 
@@ -942,29 +936,17 @@ performance page are fixed and disconnected.
 
 ### Build steps
 
+The Power BI report is pre-built as `PowerBI/project_dashboard.pbix`. To rebuild it:
+
 1. Open Power BI Desktop, then Transform Data, New Source, Blank Query.
-2. Paste each of the five query blocks from `PowerQuery_M_Scoring.txt` into the
-   Advanced Editor. Name each query as the block says.
+2. Create the five Power Query queries (Config, ActiveDataset, CurrentRelationships, DateTable, ScoredRelationships) replicating the baseline preprocessing and fixed logistic regression coefficients.
 3. Disable load for `Config` and `CurrentRelationships`.
-4. Set `PG_Server` and `PG_Database` in `Config`. Enter the Neon credentials in
-   the Power BI prompt. Do not put the password in a file.
-5. Add the DAX objects from `DAX_Measures.txt`.
-6. Build the five report pages per `PBIX_Build_Guide.md`.
+4. Set `PG_Server` and `PG_Database` in `Config`. Enter the Neon credentials in the Power BI prompt. Do not put the password in a file.
+5. Add the DAX measures and calculated columns.
+6. Build the five report pages.
 7. Publish to Power BI Service and configure daily scheduled refresh.
 
-### Verification
-
-```bash
-# After the PBIX refresh, export ScoredRelationships to CSV, then:
-uv run python PowerBI/verify_scores.py path/to/exported_scores.csv
-```
-
-Require `max_probability_diff <= 1e-6` and matching flag columns. A correct
-build reports about `3.9e-16`. The report must show 1,180 flagged at 0.1840
-(13.32%) and 3,286 at 0.0981 (37.09%).
-
-The repository does not commit a prediction table. `PowerBI/scored_latest.csv`
-is gitignored. The project rule bans prediction tables.
+The repository contains only the final PBIX file. The Power Query scripts, DAX objects, build guide, model export, and parity check script are not committed.
 
 ## Testing
 
@@ -995,10 +977,6 @@ then drop their tables. The account database tests also create and authenticate
 accounts, reject duplicate emails, set `last_login_at`, seed the administrator
 account, update its password, and check visitor distinct counts. CI runs the
 unit suite only.
-
-The Power BI parity test checks `powerbi_model_export.json` against a fresh fit,
-reproduces both flag counts, and checks the Power Query constants against the
-export.
 
 ## Security and credentials
 
