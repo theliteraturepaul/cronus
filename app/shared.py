@@ -1110,15 +1110,15 @@ def render_notebook_charts(section: str, chart_filenames: list[str], captions: l
     expander_title = f"Show {len(chart_filenames)} charts"
     assets = Path(__file__).resolve().parent / "assets"
     folder = "modeling" if section.lower() in {"modeling", "model performance"} else "analysis"
-    root = assets / folder
+    search_roots = (assets / folder, assets)
     with st.expander(expander_title, expanded=False):
         cols = st.columns(2)
         for i, (fname, caption) in enumerate(zip(chart_filenames, captions, strict=False)):
             with cols[i % 2]:
-                image_path = root / fname
-                if not image_path.is_file():
-                    image_path = assets / fname
-                if not image_path.is_file():
+                image_path = next(
+                    (root / fname for root in search_roots if (root / fname).is_file()), None
+                )
+                if image_path is None:
                     st.warning(f"Figure unavailable: {caption}")
                     continue
                 # Bytes avoid Streamlit Cloud MediaFileStorageError on local paths.
@@ -1167,12 +1167,10 @@ def render_rate_table(
         st.caption(caption)
 
 
-
 CHART_PRIMARY = "#2DD4BF"
 CHART_ACCENT = "#F97316"
 CHART_MUTED = "#94A3B8"
 CHART_TEXT = "#E2E8F0"
-CHART_GRID = "#334155"
 CHART_FONT = "'Inter', 'Segoe UI', system-ui, sans-serif"
 
 
@@ -1185,7 +1183,7 @@ def _styled_chart(chart: alt.TopLevelMixin, *, height: int) -> alt.TopLevelMixin
         .configure_axis(
             labelColor="#CBD5E1",
             titleColor=CHART_MUTED,
-            gridColor=CHART_GRID,
+            grid=False,
             domain=False,
             ticks=False,
             labelFont=CHART_FONT,
