@@ -43,7 +43,7 @@ production-readiness claim, and no fairness claim.
 
 | Deliverable | Location |
 | --- | --- |
-| Project documentation (PDF) | [`Docs/01_Project_Documentation.pdf`](Docs/01_Project_Documentation.pdf) |
+| Project documentation (PDF) | [`Docs/project_documentation.pdf`](Docs/project_documentation.pdf) |
 | Canonical dataset | [`Dataset/project_dataset.csv`](Dataset/project_dataset.csv) |
 | Exploratory analysis notebook | [`Python/analysis.ipynb`](Python/analysis.ipynb) |
 | Modeling and evaluation notebook | [`Python/modeling.ipynb`](Python/modeling.ipynb) |
@@ -126,7 +126,7 @@ deployment installs only what the application needs.
 ```text
 .
 ├── Docs/
-│   └── 01_Project_Documentation.pdf   # submitted project report
+│   └── project_documentation.pdf   # submitted project report
 ├── Dataset/
 │   └── project_dataset.csv        # canonical committed dataset
 ├── Python/
