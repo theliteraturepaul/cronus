@@ -32,7 +32,7 @@ let
         PG_Server = "ep-xxxx-pooler.REGION.aws.neon.tech",
         PG_Database = "neondb",
 
-        // Fixed Phase 3 thresholds.
+        // Fixed baseline thresholds.
         Threshold_Default = 0.184,
         Threshold_Recall70 = 0.0981,
 

@@ -6,7 +6,7 @@ Build-time check, not part of the application. After the PBIX loads, export the
 
     uv run python PowerBI/verify_scores.py path/to/exported_scores.csv
 
-The script refits the fixed Phase 3 pipeline on the active current-relationship
+The script refits the fixed baseline pipeline on the active current-relationship
 frame, scores every row, and compares the result with the Power BI export. It
 exits with code 1 when the probabilities differ by more than 1e-6 or when
 either flag column disagrees.

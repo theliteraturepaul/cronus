@@ -4,6 +4,10 @@
 !.env.example
 .streamlit/secrets.toml
 
+# Local agent handoff files
+AGENTS.md
+HANDOFF.md
+
 # Local source dataset (canonical committed copy lives in Dataset/)
 /telecom_churn.csv
 

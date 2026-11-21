@@ -6,9 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "alembic>=1.16",
+    "altair>=6.0",
     "numpy>=2.0",
     "pandas>=2.2",
-    "plotly>=6.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
@@ -22,7 +22,6 @@ dev = [
     "mypy>=1.14",
     "pandas-stubs>=2.2",
     "pytest>=8.3",
-    "pytest-cov>=6.0",
     "ruff>=0.14",
 ]
 notebook = [

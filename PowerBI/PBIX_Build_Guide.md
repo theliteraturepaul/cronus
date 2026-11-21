@@ -4,7 +4,7 @@
 
 This guide builds `PowerBI/project_dashboard.pbix` in **Import mode**. Power
 Query reads the active dataset from Neon, keeps the latest relationship for
-each customer, reproduces the Phase 3 preprocessing, and applies the fixed
+each customer, reproduces the baseline preprocessing, and applies the fixed
 logistic regression coefficients. Power BI computes every score. The PBIX does
 not read a scored CSV and does not call Python at view time.
 
@@ -210,13 +210,13 @@ Text box:
 > segment feature causes churn.
 
 Keep the `N` label on every chart. A rate on a small segment is unstable. Do
-not add a correlation table. The Phase 2 notebook owns the correlation evidence.
+not add a correlation table. The analysis notebook owns the correlation evidence.
 
 ---
 
 ## Page 4: Model performance
 
-This page shows the fixed Phase 3 evidence. Do not recompute these values from
+This page shows the fixed baseline evidence. Do not recompute these values from
 the current frame. Use the disconnected tables from `DAX_Measures.txt`.
 
 | Visual | Configuration |
@@ -232,7 +232,7 @@ the current frame. Use the disconnected tables from `DAX_Measures.txt`.
 
 Text box:
 
-> Fixed Phase 3 evidence. Holdout: PR-AUC 0.2312, ROC-AUC 0.7295, Brier 0.0806.
+> Fixed baseline evidence. Holdout: PR-AUC 0.2312, ROC-AUC 0.7295, Brier 0.0806.
 > Confusion matrix at threshold 0.1840: 1,423 true negatives, 180 false
 > positives, 112 false negatives, 57 true positives. Temporal check: threshold
 > 0.1410, PR-AUC 0.2776, ROC-AUC 0.7450, Brier 0.0941, prevalence 11.55%.
@@ -347,7 +347,7 @@ state category, or a changed numeric mean.
 4. Require `max_probability_diff <= 1e-6` and both flag columns true. A correct
    build shows about `3.9e-16`, because both paths use the same 43 coefficients.
 
-The script refits the fixed Phase 3 pipeline on the active current frame and
+The script refits the fixed baseline pipeline on the active current frame and
 compares every customer. It reads the database. Set `DATABASE_URL` in `.env`
 first.
 

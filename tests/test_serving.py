@@ -40,7 +40,7 @@ def scoring(current: pd.DataFrame) -> ScoringModel:
     return fit_scoring_model(current, dataset_id="baseline")
 
 
-def test_final_constants_match_phase_three() -> None:
+def test_final_constants_match_baseline() -> None:
     assert FINAL_MODEL_NAME == "logistic"
     assert FINAL_INCLUDE_RELATIONSHIP_COUNT is False
     assert FINAL_MODEL_PARAMS == {"classifier__C": 0.1}
@@ -189,7 +189,7 @@ def test_predict_churn_rejects_missing_features(
         predict_churn(scoring.model, current.drop(columns=["calls_made"]))
 
 
-def test_phase_three_fit_api_remains_reusable(current: pd.DataFrame) -> None:
+def test_final_fit_api_remains_reusable(current: pd.DataFrame) -> None:
     model = fit_final_model(
         current,
         model_name="logistic",

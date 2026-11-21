@@ -22,7 +22,7 @@ HIGH_RECALL_THRESHOLD = 0.0981
 
 @dataclass(frozen=True)
 class ThresholdPolicy:
-    """One fixed Phase 3 threshold policy."""
+    """One fixed baseline threshold policy."""
 
     key: str
     label: str
@@ -62,7 +62,7 @@ DEFAULT_THRESHOLD_POLICY = THRESHOLD_POLICIES[0]
 
 @dataclass(frozen=True)
 class ModelCard:
-    """Documented Phase 3 holdout evidence for the baseline snapshot."""
+    """Documented holdout evidence for the baseline snapshot."""
 
     model_name: str = "Logistic regression with L2 penalty"
     feature_count: int = 10
@@ -194,7 +194,7 @@ def fit_scoring_model(
     *,
     dataset_id: str,
 ) -> ScoringModel:
-    """Fit the final Phase 3 pipeline on the complete active current frame."""
+    """Fit the final baseline pipeline on the complete active current frame."""
 
     current = prepare_current_frame(current_frame)
     if current.empty:

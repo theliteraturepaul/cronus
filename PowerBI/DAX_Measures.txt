@@ -3,7 +3,7 @@
 // ============================================================================
 // Paste each block into Power BI Desktop: Modeling > New measure, New column,
 // or New table. The fixed evidence values come from src/cronus/modeling/
-// serving.py and the Phase 3 evidence notebook. Do not recompute them from the
+// serving.py and the baseline evidence notebook. Do not recompute them from the
 // current frame.
 //
 // The model has no relationships. ActiveDataset is a single-row table of
@@ -243,7 +243,7 @@ RETURN
 
 
 // ============================================================================
-// 6. FIXED PHASE 3 EVIDENCE TABLES (disconnected, do not recompute)
+// 6. FIXED BASELINE EVIDENCE TABLES (disconnected, do not recompute)
 // ============================================================================
 
 ModelMetrics =
